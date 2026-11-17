@@ -1,5 +1,10 @@
 <p align="center"><img src="pc/assets/icon.png" width="128" alt="Fly"></p>
 
+<p align="center">
+  <video src="docs/fly-20s.mp4" poster="docs/fly-20s.png" controls muted width="720"></video><br>
+  <sub>Se o vídeo não abrir aqui, <a href="docs/fly-20s.mp4">veja o arquivo</a>.</sub>
+</p>
+
 # Fly
 
 Arremesse foto, arquivo, link e texto entre o celular Android e o PC com Windows. Escolha uma foto no celular, arraste pra cima, e ela pousa na tela do computador. Do PC pro celular, solte um arquivo numa barra luminosa no canto da tela.

@@ -1,0 +1,197 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:transparent;font-family:"Segoe UI",system-ui,sans-serif;user-select:none}
+#glow{position:fixed;inset:0;pointer-events:none;opacity:0;box-shadow:inset 0 0 90px 10px #ffe9a0,inset 0 0 200px 20px #b8860b66}
+.card{position:fixed;border-radius:10px;border:4px solid #fff;box-sizing:border-box;box-shadow:0 18px 44px #000b;cursor:grab;overflow:hidden;touch-action:none;
+  background:linear-gradient(135deg,#b8860b,#ffe9a0);will-change:transform,opacity;display:flex;align-items:center;justify-content:center;color:#fff}
+.card img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.card .ext{font-size:48px;font-weight:800;letter-spacing:2px;text-shadow:0 2px 8px #0006}
+.card .ext.lkc{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 14px 40px;text-align:center}
+.lk{font-size:13px;font-weight:600;letter-spacing:0;margin-top:8px;max-width:100%;overflow-wrap:anywhere;text-shadow:0 1px 4px #0008}
+.label{position:fixed;text-align:center;font-size:12px;color:#fff;text-shadow:0 1px 4px #000,0 0 8px #000;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tween,.tween+.label{transition:left .45s cubic-bezier(.2,.8,.2,1),top .45s cubic-bezier(.2,.8,.2,1),width .45s cubic-bezier(.2,.8,.2,1),height .45s cubic-bezier(.2,.8,.2,1)}
+.ring{position:fixed;border-radius:50%;border:3px solid #ffe9a0;pointer-events:none}
+.tools{position:absolute;top:8px;left:8px;right:8px;display:flex;justify-content:space-between;opacity:0;transition:opacity .15s}
+.card:hover .tools{opacity:1}
+.tools span{width:30px;height:30px;border-radius:50%;background:#08080acc;border:1px solid #ffffff55;display:grid;place-items:center;font-size:16px;line-height:1;cursor:pointer}
+.tools .grab{cursor:grab}
+.copy{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);padding:8px 20px;border-radius:99px;background:linear-gradient(90deg,#b8860b,#d4af37);color:#1a1405;font-size:14px;font-weight:700;white-space:nowrap;
+  box-shadow:0 4px 14px #0008;opacity:0;pointer-events:none;cursor:pointer;transition:opacity .15s,filter .15s}
+.card:hover .copy{opacity:1;pointer-events:auto}
+.copy:hover{filter:brightness(1.15)}
+.card.up .copy{display:none}
+.prog{position:absolute;left:0;right:0;bottom:0;height:26px;background:#08080acc;font-size:12px;color:#fff;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.prog i{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#b8860b,#ffe9a0);opacity:.75;transition:width .15s}
+.prog b{position:relative;font-weight:600}
+</style></head>
+<body>
+<div id="glow"></div>
+<script>
+const glow = document.getElementById('glow');
+const live = new Map();           // id -> rec (na ordem de chegada)
+let hovering = 0, z = 10, AREA = { x: 0, y: 0, w: 1280, h: 720 };
+
+// ---------- layout: fotos lado a lado, centralizadas ----------
+function place(r, x, y, w, h, tween) {
+  const c = r.card;
+  if (tween) { c.classList.add('tween'); clearTimeout(r.tw); r.tw = setTimeout(() => c.classList.remove('tween'), 520); }
+  c.style.left = x + 'px'; c.style.top = y + 'px'; c.style.width = w + 'px'; c.style.height = h + 'px';
+  r.label.style.left = x + 'px'; r.label.style.top = (y + h + 8) + 'px'; r.label.style.width = w + 'px';
+}
+function layout(newRec) {
+  const list = [...live.values()].filter(r => !r.pinned);
+  if (!list.length) return;
+  const A = AREA, gap = 26, perRow = 4, labelH = 34;
+  const rows = []; for (let i = 0; i < list.length; i += perRow) rows.push(list.slice(i, i + perRow));
+  const availW = A.w * 0.92, rowMaxH = (A.h * 0.66) / rows.length - labelH;
+  let totalH = 0;
+  rows.forEach(row => {
+    const sum = row.reduce((s, r) => s + r.asp, 0);
+    row.h = Math.max(120, Math.min(rowMaxH, (availW - gap * (row.length - 1)) / sum, 600));
+    if (row.every(r => r.small)) row.h = Math.min(row.h, 240);   // cartões sem foto (link, vídeo, arquivo) não precisam ficar gigantes
+    totalH += row.h + labelH;
+  });
+  let y = A.y + (A.h - totalH) / 2 - 10;
+  rows.forEach(row => {
+    const widths = row.map(r => r.asp * row.h);
+    const rowW = widths.reduce((a, b) => a + b, 0) + gap * (row.length - 1);
+    let x = A.x + (A.w - rowW) / 2;
+    row.forEach((r, i) => { place(r, x, y, widths[i], row.h, r !== newRec); x += widths[i] + gap; });
+    y += row.h + labelH;
+  });
+}
+
+// ---------- chegada ----------
+window.zarpa.onLand(d => {
+  AREA = d.area;
+  if (d.src) {
+    const im = new Image();
+    im.onload = () => build(d, im.naturalWidth, im.naturalHeight, im);
+    im.onerror = () => build(d, 0, 0, null);
+    im.src = d.src;
+  } else build(d, 0, 0, null);
+});
+
+function build(d, nw, nh, im) {
+  const card = document.createElement('div'); card.className = 'card'; card.style.zIndex = ++z;
+  if (im) card.appendChild(im);
+  else {
+    const e = document.createElement('div'); e.className = 'ext';
+    if (d.link) { e.classList.add('lkc'); e.innerHTML = '<div style="font-size:36px">🔗</div><div class="lk"></div>'; e.querySelector('.lk').textContent = d.url || d.name; }
+    else e.textContent = d.ext || 'ARQ';
+    card.appendChild(e);
+  }
+  card.insertAdjacentHTML('beforeend', d.link
+    ? '<div class="tools"><span class="x" title="Fechar">×</span></div>'
+    : '<div class="tools"><span class="x" title="Fechar">×</span><span class="grab" draggable="true" title="Arraste para uma pasta ou programa">⇱</span></div>');
+  card.insertAdjacentHTML('beforeend', d.link
+    ? '<div class="copy" title="Só abre quando você clica">↗ Abrir link</div>'
+    : '<div class="copy" title="Copiar para colar em outro programa">⧉ Copiar</div>');
+  if (d.uploading) { card.classList.add('up'); card.insertAdjacentHTML('beforeend', '<div class="prog"><i></i><b>Chegando… 0%</b></div>'); }
+  const label = document.createElement('div'); label.className = 'label'; label.textContent = d.name; label.style.zIndex = z;
+  document.body.append(card, label);
+
+  const rec = { card, label, id: d.id, pinned: false, timer: 0, asp: (nw && nh) ? nw / nh : 4 / 3, uploading: !!d.uploading, small: !im, keep: !!d.link };
+  live.set(d.id, rec);
+  layout(rec);
+  const x = parseFloat(card.style.left), y = parseFloat(card.style.top), cw = parseFloat(card.style.width), ch = parseFloat(card.style.height);
+
+  // Voo: sobe de baixo e assenta reto no lugar.
+  const fy = AREA.y + AREA.h - y + 60;
+  card.animate([
+    { transform: `translate(0,${fy}px) scale(.15) rotate(18deg)`, opacity: 0 },
+    { transform: 'translate(0,-14px) scale(1.1) rotate(-3deg)', opacity: 1, offset: .62 },
+    { transform: 'translate(0,0) scale(.97) rotate(0deg)', offset: .84 },
+    { transform: 'translate(0,0) scale(1) rotate(0deg)' }
+  ], { duration: 800, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  label.animate([{ opacity: 0 }, { opacity: 0, offset: .8 }, { opacity: 1 }], { duration: 800 });
+
+  setTimeout(() => {
+    if (d.effect === 'ripple') {
+      for (let i = 0; i < 3; i++) {
+        const r = document.createElement('div'); r.className = 'ring';
+        const s = Math.max(cw, ch) * .8; r.style.cssText = `left:${x + cw / 2 - s / 2}px;top:${y + ch / 2 - s / 2}px;width:${s}px;height:${s}px`;
+        document.body.appendChild(r);
+        r.animate([{ transform: 'scale(.2)', opacity: .9 }, { transform: 'scale(2.8)', opacity: 0 }], { duration: 950, delay: i * 160, easing: 'ease-out', fill: 'forwards' }).onfinish = () => r.remove();
+      }
+    } else glow.animate([{ opacity: 0 }, { opacity: .9 }, { opacity: 0 }], { duration: 1000, easing: 'ease-out' });
+  }, 600);
+
+  const arm = () => { clearTimeout(rec.timer); if (!rec.pinned && !rec.uploading && !rec.keep) rec.timer = setTimeout(() => dismiss(rec), 25000); };
+  rec.arm = arm; arm();
+
+  let drag = null;
+  card.addEventListener('mouseenter', () => { hovering++; clearTimeout(rec.timer); window.zarpa.mouse(false); });
+  card.addEventListener('mouseleave', () => { hovering = Math.max(0, hovering - 1); if (!hovering) window.zarpa.mouse(true); arm(); });
+  card.addEventListener('pointerdown', e => {
+    if (e.target.closest('.tools')) return;
+    card.classList.remove('tween');
+    card.style.zIndex = label.style.zIndex = ++z;
+    card.setPointerCapture(e.pointerId);
+    drag = { sx: e.clientX, sy: e.clientY, ox: parseFloat(card.style.left), oy: parseFloat(card.style.top), moved: false };
+    card.style.cursor = 'grabbing';
+  });
+  card.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; if (!rec.pinned) { rec.pinned = true; clearTimeout(rec.timer); layout(); } }
+    if (drag.moved) {
+      const h = parseFloat(card.style.height);
+      card.style.left = (drag.ox + dx) + 'px'; card.style.top = (drag.oy + dy) + 'px';
+      label.style.left = (drag.ox + dx) + 'px'; label.style.top = (drag.oy + dy + h + 8) + 'px';
+    }
+  });
+  card.addEventListener('pointerup', () => {
+    if (drag && !drag.moved && !d.link && !rec.uploading) window.zarpa.reveal(d.id);
+    drag = null; card.style.cursor = 'grab';
+  });
+  const cp = card.querySelector('.copy');
+  if (cp) {
+    cp.addEventListener('pointerdown', e => e.stopPropagation());   // não começa a arrastar o cartão
+    cp.addEventListener('click', async e => {
+      e.stopPropagation();
+      if (d.link) { window.zarpa.openLink(d.id); setTimeout(() => dismiss(rec), 300); return; }
+      if (rec.uploading || cp.dataset.busy) return;
+      cp.dataset.busy = '1'; cp.textContent = 'Copiando…';
+      const ok = await window.zarpa.copy(d.id);
+      cp.textContent = ok ? '✓ Copiado' : 'Não deu';
+      setTimeout(() => { cp.textContent = '⧉ Copiar'; delete cp.dataset.busy; }, 1500);
+    });
+  }
+  card.querySelector('.x').addEventListener('click', e => { e.stopPropagation(); dismiss(rec); });
+  const gr = card.querySelector('.grab');
+  if (gr) gr.addEventListener('dragstart', e => { e.preventDefault(); if (!rec.uploading) window.zarpa.drag(d.id); });
+}
+
+// ---------- progresso e troca pelo original ----------
+window.zarpa.onProgress(p => {
+  const r = live.get(p.id); if (!r) return;
+  const bar = r.card.querySelector('.prog'); if (!bar) return;
+  bar.querySelector('i').style.width = p.pct + '%';
+  bar.querySelector('b').textContent = 'Chegando… ' + p.pct + '%';
+});
+window.zarpa.onFinal(f => {
+  const r = live.get(f.id); if (!r) return;
+  const done = () => { r.uploading = false; r.card.classList.remove('up'); const b = r.card.querySelector('.prog'); if (b) b.remove(); r.label.textContent = f.name; r.arm && r.arm(); };
+  const old = r.card.querySelector('img');
+  if (!old) return done();
+  const im = new Image();
+  im.onload = () => { (im.decode ? im.decode() : Promise.resolve()).catch(() => {}).then(() => { old.replaceWith(im); done(); }); };
+  im.onerror = done;
+  im.src = f.src;
+});
+
+function dismiss(rec) {
+  clearTimeout(rec.timer);
+  if (!live.has(rec.id)) return;
+  live.delete(rec.id);
+  hovering = Math.max(0, hovering - 1);
+  rec.label.remove();
+  rec.card.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 350, fill: 'forwards' }).onfinish = () => {
+    rec.card.remove(); window.zarpa.gone(rec.id);
+    layout();
+    if (!live.size) { hovering = 0; window.zarpa.mouse(true); setTimeout(() => !live.size && window.zarpa.idle(), 200); }
+  };
+}
+</script></body></html>

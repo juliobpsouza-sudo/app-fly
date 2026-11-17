@@ -1,0 +1,80 @@
+{
+  "name": "zarpa",
+  "productName": "Fly",
+  "version": "0.5.3",
+  "description": "Arremesse fotos e arquivos do celular para o PC",
+  "author": "Fly",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "icon": "node tools/makeicon.js",
+    "predist": "node tools/copyapk.js",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "app.zarpa",
+    "productName": "Fly",
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "from": "build/Zarpa.apk",
+        "to": "Zarpa.apk"
+      },
+      {
+        "from": "build/apk-version.txt",
+        "to": "apk-version.txt"
+      }
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "overlay.html",
+      "pair.html",
+      "gallery.html",
+      "apk.html",
+      "portal.html",
+      "assets/**",
+      "tools/copy.ps1",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "tools/copy.ps1"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "artifactName": "Fly-Setup-${version}.${ext}",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Fly",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
+    }
+  },
+  "license": "MIT"
+}

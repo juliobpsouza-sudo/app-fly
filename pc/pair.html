@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Fly — parear</title>
+<style>
+body{margin:0;background:radial-gradient(120% 80% at 20% 0%,#1c1a14,#08080a 60%);color:#f5efe0;font:15px/1.5 "Segoe UI",system-ui,sans-serif;text-align:center;padding:26px 24px}
+h1{font-size:22px;margin:0 0 4px}p{margin:4px 0;color:#a39b86;font-size:13px}
+img{width:240px;height:240px;border-radius:14px;background:#fff;margin:16px 0 8px}
+.code{font:700 30px ui-monospace,Consolas,monospace;letter-spacing:8px;color:#ffe9a0;margin:6px 0}
+.box{background:#ffffff10;border:1px solid #ffffff1c;border-radius:12px;padding:10px;margin-top:10px;font-size:13px}
+button{margin-top:14px;border:0;border-radius:12px;padding:9px 18px;color:#1a1405;font-weight:700;background:linear-gradient(90deg,#b8860b,#d4af37);cursor:pointer}
+</style></head><body>
+<h1>Parear celular</h1>
+<p>Abra o app Fly no celular e toque em <b>Escanear QR</b>.</p>
+<img id="qr" alt="QR">
+<div class="box">Sem câmera? No app, escolha “digitar” e use:<br><b id="addr"></b><div class="code" id="code"></div></div>
+<p id="note">O código vale por 10 minutos. PC e celular precisam estar na mesma rede Wi-Fi ou com o Tailscale ligado. Quando o celular conectar, esta janela fecha sozinha.</p>
+<button onclick="zarpa.refreshPair()">Gerar novo código</button>
+<p style="margin-top:12px">Ainda não tem o app no celular? <a href="#" style="color:#ffe9a0" onclick="zarpa.apkOpen();return false">Mostrar o QR pra baixar o app</a></p>
+<div id="ok" style="display:none;position:fixed;inset:0;background:#08080af2;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:9">
+  <div style="width:84px;height:84px;border-radius:50%;background:linear-gradient(135deg,#b8860b,#ffe9a0);display:grid;place-items:center;font-size:44px;color:#1a1405">✓</div>
+  <b style="font-size:20px">Celular conectado</b><span style="color:#a39b86;font-size:13px">Abrindo suas fotos…</span>
+</div>
+<script>
+zarpa.onPaired(() => { document.getElementById('ok').style.display = 'flex'; });
+zarpa.onPair(d => {
+  qr.src = d.qr; code.textContent = d.code;
+  addr.textContent = d.hosts.length ? d.hosts.map(h => h + ':' + d.port).join('  ·  ') : 'nenhuma rede encontrada';
+});
+</script></body></html>

@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Fly</title>
+<style>
+:root{--ink:#f5efe0;--mut:#a39b86;--a:#b8860b;--b:#ffe9a0;--c:#d4af37}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{background:radial-gradient(120% 70% at 15% 0%,#1c1a14 0%,#08080a 55%,#08080a 100%) fixed;color:var(--ink);font:14px/1.45 "Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:14px;padding:18px 24px 6px;flex-wrap:wrap}
+.logoimg{width:42px;height:42px;border-radius:12px;display:block}
+.empty .logoimg{margin:0 auto 14px;width:64px;height:64px;border-radius:16px}
+.logo{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--a),var(--b));display:grid;place-items:center;font-weight:900;font-size:20px;color:#1a1405}
+h1{font-size:20px;letter-spacing:-.3px}
+.sub{font-size:12px;color:var(--mut)}
+.st{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);margin-left:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:#8a826f}.dot.on{background:#34d399;box-shadow:0 0 8px #34d399}
+.sp{flex:1}
+.btn{border:1px solid #ffffff24;background:#ffffff12;color:var(--ink);border-radius:12px;padding:8px 14px;font:inherit;font-size:13px;cursor:pointer}
+.btn:hover{background:#ffffff1f}.btn.pri{border:0;font-weight:700;color:#1a1405;background:linear-gradient(90deg,var(--a),var(--c))}
+nav{display:flex;gap:6px;padding:10px 24px 6px}
+nav button{border:0;background:transparent;color:var(--mut);font:inherit;font-size:14px;font-weight:600;padding:8px 16px;border-radius:12px;cursor:pointer}
+nav button.on{background:#ffffff18;color:var(--ink)}
+.view{display:none;flex:1;overflow-y:auto;padding:0 24px 28px}.view.on{display:block}
+.view::-webkit-scrollbar{width:10px}.view::-webkit-scrollbar-thumb{background:#ffffff22;border-radius:8px}
+h2{font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:1.4px;margin:22px 0 10px}
+.hint{font-size:12px;color:var(--mut);padding:4px 0 6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+.it{position:relative;border-radius:14px;overflow:hidden;background:#ffffff0d;border:1px solid #ffffff14;cursor:grab;transition:transform .12s,border-color .12s}
+.it:hover{transform:translateY(-2px);border-color:#ffe9a088}
+.th{aspect-ratio:1;background:linear-gradient(135deg,#1c1a14,#14120e);display:grid;place-items:center;overflow:hidden}
+.th img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.th .ext{font-size:30px;font-weight:800;color:#ffffffcc;letter-spacing:1px}
+.meta{padding:9px 11px 10px}
+.meta b{display:block;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta span{font-size:11.5px;color:var(--mut)}
+.act{position:absolute;left:0;right:0;top:0;aspect-ratio:1;display:flex;align-items:flex-end;justify-content:space-between;padding:10px;opacity:0;transition:opacity .14s;background:linear-gradient(to top,#08080acc,transparent 55%)}
+.it:hover .act{opacity:1}
+.cp{border:0;border-radius:99px;padding:7px 14px;font:inherit;font-size:13px;font-weight:700;color:#1a1405;background:linear-gradient(90deg,var(--a),var(--c));cursor:pointer;box-shadow:0 4px 14px #0008}
+.cp:hover{filter:brightness(1.15)}
+.op{border:1px solid #ffffff44;width:32px;height:32px;border-radius:50%;background:#08080acc;color:#fff;cursor:pointer;font-size:15px}
+.empty{margin:10vh auto 0;max-width:420px;text-align:center;color:var(--mut)}
+.empty .logo{margin:0 auto 14px;width:60px;height:60px;font-size:30px;border-radius:18px}
+.empty h3{color:var(--ink);font-size:18px;margin-bottom:6px}
+/* ---- aba: enviar pro celular ---- */
+.dz{margin-top:14px;border:2px dashed #ffffff33;border-radius:20px;padding:34px 20px;text-align:center;color:var(--mut);transition:all .15s;background:#ffffff08}
+.dz.over{border-color:var(--b);background:#ffe9a014;color:var(--ink);transform:scale(1.01)}
+.dz .big{font-size:40px;margin-bottom:6px}.dz b{display:block;font-size:17px;color:var(--ink);margin-bottom:4px}
+.dz .row{margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.txt{display:flex;gap:10px;margin-top:14px}
+.txt textarea{flex:1;resize:vertical;min-height:46px;max-height:160px;background:#ffffff10;border:1px solid #ffffff22;border-radius:12px;color:var(--ink);padding:10px 12px;font:inherit;outline:none}
+.txt textarea:focus{border-color:var(--b)}
+.net{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--mut)}
+.msg{margin-top:10px;font-size:12.5px;color:#fbbf24;white-space:pre-line}
+.out{display:flex;align-items:center;gap:12px;padding:10px 12px;margin-top:8px;border-radius:12px;background:#ffffff0d;border:1px solid #ffffff14}
+.out .ic{font-size:22px;width:30px;text-align:center}
+.out .tx{flex:1;min-width:0}.out .tx b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.out .tx span{font-size:11.5px;color:var(--mut)}
+.chip{font-size:11.5px;padding:3px 10px;border-radius:99px;background:#ffffff14;white-space:nowrap}
+.chip.ok{background:#34d39922;color:#34d399}.chip.wait{background:#fbbf2422;color:#fbbf24}.chip.no{background:#d4af3722;color:#d4af37}
+.x{border:0;background:transparent;color:var(--mut);cursor:pointer;font-size:18px;padding:2px 6px}.x:hover{color:var(--ink)}
+</style></head>
+<body>
+<header>
+  <img class="logoimg" src="assets/icon.png" alt="Fly">
+  <div><h1>Fly</h1><div class="sub" id="count">carregando…</div></div>
+  <div class="st"><span class="dot" id="dot"></span><span id="stxt">…</span></div>
+  <div class="sp"></div>
+  <button class="btn" id="apk">App do celular (QR)</button>
+  <button class="btn" id="folder">Abrir pasta</button>
+  <button class="btn pri" id="pair">Parear celular</button>
+</header>
+<nav>
+  <button id="tIn" class="on">Recebidos</button>
+  <button id="tOut">Enviar pro celular</button>
+  <button id="tUpd">Atualizações</button>
+</nav>
+
+<!-- ===== aba 1: o que chegou do celular ===== -->
+<section class="view on" id="vIn">
+  <div class="hint">Passe o mouse numa foto para copiar. Arraste para uma pasta ou para dentro de outro programa. Dois cliques abrem a foto.</div>
+  <div id="main"></div>
+</section>
+
+<!-- ===== aba 2: mandar do PC pro celular ===== -->
+<section class="view" id="vOut">
+  <div class="dz" id="dz">
+    <div class="big">⇪</div>
+    <b>Solte aqui o que você quer mandar pro celular</b>
+    <div>Arquivos, fotos, links ou texto. Dá pra arrastar de uma pasta, de uma página ou de outro programa.</div>
+    <div class="row"><button class="btn" id="pick">Escolher arquivos…</button></div>
+  </div>
+  <div class="txt">
+    <textarea id="ta" placeholder="Ou cole um link ou escreva um texto aqui…"></textarea>
+    <button class="btn pri" id="send">Enviar</button>
+  </div>
+  <div class="net"><span class="dot" id="odot"></span><span id="otxt">…</span></div>
+  <div class="msg" id="msg"></div>
+  <h2>Enviados</h2>
+  <div id="outList"></div>
+</section>
+
+<!-- ===== aba 3: atualizar o app do celular ===== -->
+<section class="view" id="vUpd">
+  <div class="dz" style="text-align:left;padding:22px 24px">
+    <b style="font-size:18px">App do celular</b>
+    <div id="uv" style="margin-top:10px;font-size:14px;color:var(--ink);line-height:1.8"></div>
+    <div id="ub" style="margin-top:6px"></div>
+    <div class="row" style="justify-content:flex-start;margin-top:16px">
+      <button class="btn pri" id="usend">Enviar atualização pro celular</button>
+      <button class="btn" id="uqr">Mostrar QR pra baixar</button>
+    </div>
+    <div class="msg" id="umsg"></div>
+  </div>
+  <div class="hint" style="margin-top:14px">Ao enviar, o celular avisa. Toque no aviso, abra o Fly e escolha <b>Permitir</b>: a instalação abre sozinha. Na primeira vez o Android pede pra liberar a instalação de apps pelo Fly. O pareamento continua valendo.</div>
+  <h2>Última atualização enviada</h2>
+  <div id="ulast"></div>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+const items = new Map();
+const main = $('main');
+const dayKey = t => new Date(t).toDateString();
+function dayLabel(t) {
+  const d = new Date(t), now = new Date(), y = new Date(now.getTime() - 864e5);
+  if (d.toDateString() === now.toDateString()) return 'Hoje';
+  if (d.toDateString() === y.toDateString()) return 'Ontem';
+  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+const hhmm = t => new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+/* ---------- abas ---------- */
+function tab(which) {
+  for (const [k, t, v] of [['in', 'tIn', 'vIn'], ['out', 'tOut', 'vOut'], ['upd', 'tUpd', 'vUpd']]) {
+    $(t).classList.toggle('on', which === k); $(v).classList.toggle('on', which === k);
+  }
+  if (which === 'out') refreshOut();
+  if (which === 'upd') refreshUpd();
+}
+$('tIn').onclick = () => tab('in'); $('tOut').onclick = () => tab('out'); $('tUpd').onclick = () => tab('upd');
+
+/* ---------- atualizações ---------- */
+async function refreshUpd() {
+  const i = await zarpa.updInfo(), out = await zarpa.outList();
+  const mb = (i.size / 1048576).toFixed(1).replace('.', ',');
+  $('uv').textContent = '';
+  const line = (a, b) => { const d = document.createElement('div'); const s = document.createElement('b'); s.textContent = a + ' '; d.append(s, document.createTextNode(b)); $('uv').appendChild(d); };
+  line('Versão pronta neste PC:', i.ok ? `${i.apkVersion || '?'} (${mb} MB)` : 'APK não encontrado');
+  line('Versão no celular:', i.unknown ? 'ainda não sei (abra o Fly no celular uma vez)' : i.phoneVersion);
+  const b = $('ub'); b.textContent = '';
+  const chip = document.createElement('span'); chip.className = 'chip ' + (i.newer ? 'wait' : (i.unknown ? '' : 'ok'));
+  chip.textContent = i.newer ? 'Atualização disponível' : (i.unknown ? 'sem informação do celular' : 'celular em dia ✓');
+  b.appendChild(chip);
+  $('usend').disabled = !i.ok;
+  const last = out.items.find(x => x.update), box = $('ulast'); box.textContent = '';
+  if (!last) { const p = document.createElement('div'); p.className = 'hint'; p.textContent = 'Nenhuma enviada ainda.'; box.appendChild(p); return; }
+  const row = document.createElement('div'); row.className = 'out';
+  const ic = document.createElement('div'); ic.className = 'ic'; ic.textContent = '⬆';
+  const tx = document.createElement('div'); tx.className = 'tx';
+  const nm = document.createElement('b'); nm.textContent = last.name; const sp = document.createElement('span'); sp.textContent = hhmm(last.created) + ' · ' + fmtSize(last.size);
+  tx.append(nm, sp);
+  const [t, cls] = STATE[last.state] || ['', '']; const c2 = document.createElement('span'); c2.className = 'chip ' + cls; c2.textContent = t;
+  row.append(ic, tx, c2); box.appendChild(row);
+}
+$('usend').onclick = async () => {
+  const r = await zarpa.updSend();
+  $('umsg').textContent = r.error ? r.error : 'Enviada! O celular vai avisar. Toque no aviso e escolha Permitir.';
+  refreshUpd();
+};
+$('uqr').onclick = () => zarpa.apkOpen();
+
+/* ---------- recebidos ---------- */
+function render() {
+  const list = [...items.values()].sort((a, b) => b.mtime - a.mtime);
+  $('count').textContent = list.length ? `${list.length} ${list.length === 1 ? 'arquivo recebido' : 'arquivos recebidos'}` : 'nenhum arquivo ainda';
+  main.textContent = '';
+  if (!list.length) {
+    main.innerHTML = '<div class="empty"><img class="logoimg" src="assets/icon.png" alt="Fly"><h3>Nada por aqui ainda</h3><p>Abra o Fly no celular, escolha uma foto e arraste pra cima. Ela aparece aqui e na sua tela.</p></div>';
+    return;
+  }
+  let lastDay = '', grid = null;
+  for (const it of list) {
+    const k = dayKey(it.mtime);
+    if (k !== lastDay) {
+      lastDay = k;
+      const h = document.createElement('h2'); h.textContent = dayLabel(it.mtime); main.appendChild(h);
+      grid = document.createElement('div'); grid.className = 'grid'; main.appendChild(grid);
+    }
+    grid.appendChild(card(it));
+  }
+}
+function card(it) {
+  const el = document.createElement('div'); el.className = 'it'; el.draggable = true; el.dataset.p = it.path;
+  const th = document.createElement('div'); th.className = 'th';
+  if (it.thumb) { const im = new Image(); im.src = it.thumb; th.appendChild(im); }
+  else { const e = document.createElement('div'); e.className = 'ext'; e.textContent = it.ext || 'ARQ'; th.appendChild(e); }
+  const meta = document.createElement('div'); meta.className = 'meta';
+  const nm = document.createElement('b'); nm.textContent = it.name; nm.title = it.name;
+  const sp = document.createElement('span'); sp.textContent = hhmm(it.mtime) + ' · ' + fmtSize(it.size);
+  meta.append(nm, sp);
+  const act = document.createElement('div'); act.className = 'act';
+  const cp = document.createElement('button'); cp.className = 'cp'; cp.textContent = '⧉ Copiar';
+  const op = document.createElement('button'); op.className = 'op'; op.textContent = '📁'; op.title = 'Mostrar na pasta';
+  act.append(cp, op);
+  el.append(th, meta, act);
+  el.addEventListener('dragstart', e => { e.preventDefault(); zarpa.libDrag(it.path); });
+  el.addEventListener('dblclick', () => zarpa.libOpen(it.path));
+  op.addEventListener('click', e => { e.stopPropagation(); zarpa.libReveal(it.path); });
+  cp.addEventListener('click', async e => {
+    e.stopPropagation();
+    if (cp.dataset.busy) return;
+    cp.dataset.busy = '1'; cp.textContent = 'Copiando…';
+    const ok = await zarpa.libCopy(it.path);
+    cp.textContent = ok ? '✓ Copiado' : 'Não deu';
+    setTimeout(() => { cp.textContent = '⧉ Copiar'; delete cp.dataset.busy; }, 1500);
+  });
+  return el;
+}
+zarpa.onLibAdd(info => { items.set(info.path, info); render(); });
+zarpa.onLibThumb(({ path, thumb }) => {
+  const it = items.get(path); if (!it) return;
+  it.thumb = thumb;
+  const el = [...document.querySelectorAll('.it')].find(x => x.dataset.p === path);
+  if (el) { const th = el.querySelector('.th'); th.textContent = ''; const im = new Image(); im.src = thumb; th.appendChild(im); }
+});
+
+/* ---------- enviar pro celular ---------- */
+const ICON = { file: '📄', link: '🔗', text: '📝' };
+const STATE = { pending: ['aguardando o celular', 'wait'], delivered: ['entregue ✓', 'ok'], declined: ['recusado', 'no'] };
+function drawOut(d) {
+  $('odot').className = 'dot' + (d.online ? ' on' : '');
+  $('otxt').textContent = d.online ? 'celular conectado: recebe na hora' : 'celular offline: recebe quando conectar (precisa estar no Wi-Fi ou com o Tailscale ligado)';
+  const box = $('outList'); box.textContent = '';
+  if (!d.items.length) { const p = document.createElement('div'); p.className = 'hint'; p.textContent = 'Nada enviado ainda.'; box.appendChild(p); return; }
+  for (const i of d.items) {
+    const row = document.createElement('div'); row.className = 'out';
+    const ic = document.createElement('div'); ic.className = 'ic'; ic.textContent = ICON[i.kind] || '📄';
+    const tx = document.createElement('div'); tx.className = 'tx';
+    const b = document.createElement('b'); b.textContent = i.name;
+    const s = document.createElement('span');
+    s.textContent = hhmm(i.created) + (i.kind === 'file' ? ' · ' + fmtSize(i.size) : '') + (i.preview && i.kind !== 'file' ? ' · ' + i.preview : '');
+    tx.append(b, s);
+    const [t, cls] = STATE[i.state] || ['', ''];
+    const chip = document.createElement('span'); chip.className = 'chip ' + cls; chip.textContent = t;
+    const x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.title = i.state === 'pending' ? 'Cancelar o envio' : 'Tirar da lista';
+    x.onclick = () => zarpa.outRemove(i.id);
+    row.append(ic, tx, chip, x); box.appendChild(row);
+  }
+}
+async function refreshOut() { drawOut(await zarpa.outList()); }
+zarpa.onOutUpdate(d => { drawOut(d); if ($('vUpd').classList.contains('on')) refreshUpd(); });
+setInterval(() => { if ($('vOut').classList.contains('on')) refreshOut(); }, 6000);
+
+async function submit(spec) {
+  const r = await zarpa.outAdd(spec);
+  $('msg').textContent = r.errors.length ? 'Não foi possível enviar:\n' + r.errors.join('\n') : '';
+  refreshOut();
+}
+// Impede o Electron de abrir o arquivo solto como se fosse uma página.
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+const dz = $('dz');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('over');
+  const dt = e.dataTransfer;
+  const paths = [...dt.files].map(f => zarpa.pathOf(f)).filter(Boolean);
+  if (paths.length) return submit({ paths });
+  if (dt.files.length) { $('msg').textContent = 'Essa imagem veio de uma página e não tem arquivo no PC. Salve-a numa pasta e arraste de lá, ou copie o link dela.'; return; }
+  const txt = (dt.getData('text/uri-list') || dt.getData('text/plain') || '').trim();
+  const texts = txt.split(/\r?\n/).map(s => s.trim()).filter(s => s && !s.startsWith('#'));
+  if (texts.length) submit({ texts: /^https?:\/\//i.test(texts[0]) ? texts : [txt] });
+});
+$('pick').onclick = async () => { const paths = await zarpa.outPick(); if (paths.length) submit({ paths }); };
+$('send').onclick = () => { const t = $('ta').value; if (t.trim()) { submit({ texts: [t] }); $('ta').value = ''; } };
+$('ta').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('send').click(); });
+// Ctrl+V fora da caixa de texto: cola arquivos copiados no Explorer
+window.addEventListener('paste', e => {
+  if (!$('vOut').classList.contains('on') || e.target === $('ta')) return;
+  const paths = [...(e.clipboardData.files || [])].map(f => zarpa.pathOf(f)).filter(Boolean);
+  if (paths.length) { e.preventDefault(); submit({ paths }); }
+});
+
+/* ---------- status e topo ---------- */
+async function status() {
+  const s = await zarpa.libStatus();
+  if (!s.lastSeen) { $('dot').className = 'dot'; $('stxt').textContent = 'nenhum celular pareado ainda'; return; }
+  const ago = Date.now() - s.lastSeen;
+  if (ago < 3 * 60 * 1000) { $('dot').className = 'dot on'; $('stxt').textContent = 'celular conectado'; }
+  else { $('dot').className = 'dot'; $('stxt').textContent = 'último contato ' + new Date(s.lastSeen).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+}
+$('folder').onclick = () => zarpa.libFolder();
+$('apk').onclick = () => zarpa.apkOpen();
+$('pair').onclick = () => zarpa.refreshPair();
+(async () => { (await zarpa.libList()).forEach(i => items.set(i.path, i)); render(); status(); setInterval(status, 5000); })();
+</script></body></html>

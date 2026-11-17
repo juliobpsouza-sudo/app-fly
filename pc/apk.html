@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Fly — instalar no celular</title>
+<style>
+body{margin:0;background:radial-gradient(120% 80% at 20% 0%,#1c1a14,#08080a 60%);color:#f5efe0;font:15px/1.5 "Segoe UI",system-ui,sans-serif;text-align:center;padding:24px 22px}
+h1{font-size:21px;margin:0 0 4px}p{margin:4px 0;color:#a39b86;font-size:13px}
+img{width:250px;height:250px;border-radius:14px;background:#fff;margin:14px 0 6px}
+.tabs{display:flex;gap:6px;justify-content:center;margin-top:12px;flex-wrap:wrap}
+.tabs button{border:1px solid #ffffff2a;background:#ffffff10;color:#f5efe0;border-radius:10px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer}
+.tabs button.on{background:linear-gradient(90deg,#b8860b,#ffe9a0);color:#1a1405;border:0;font-weight:700}
+.url{font:12px ui-monospace,Consolas,monospace;color:#ffe9a0;word-break:break-all;margin-top:6px}
+.box{background:#ffffff10;border:1px solid #ffffff1c;border-radius:12px;padding:10px 12px;margin-top:14px;font-size:12.5px;text-align:left;color:#d9cfae}
+.box b{color:#fff}.err{color:#fbbf24}
+.next{margin-top:12px;border:0;border-radius:12px;padding:9px 18px;color:#1a1405;font-weight:700;background:linear-gradient(90deg,#b8860b,#d4af37);cursor:pointer}
+</style></head><body>
+<h1>Instalar o Fly no celular</h1>
+<p>Aponte a câmera do celular pra este QR. O download do app começa na hora.</p>
+<div class="tabs" id="tabs"></div>
+<img id="qr" alt="QR do APK">
+<div class="url" id="url"></div>
+<p id="sz"></p>
+<div class="box"><b>Como instalar:</b><br>1. Abra o arquivo baixado (aviso do Chrome: "Manter").<br>2. Na primeira vez, o Android pede pra permitir instalar apps desse navegador. Permita.<br>3. Toque em Instalar (ou Atualizar). O pareamento continua valendo.<br><br>O celular precisa alcançar o PC: no mesmo Wi-Fi, ou com o Tailscale ligado.</div>
+<p class="err" id="err"></p>
+<button class="next" onclick="zarpa.refreshPair()">Já instalei o app: parear o celular</button>
+<script>
+(async () => {
+  const d = await zarpa.apkInfo();
+  if (!d.ok) { document.getElementById('err').textContent = 'O APK não foi encontrado neste PC.'; return; }
+  if (!d.items.length) { document.getElementById('err').textContent = 'Nenhuma rede encontrada.'; return; }
+  document.getElementById('sz').textContent = 'Tamanho: ' + (d.size / 1048576).toFixed(1).replace('.', ',') + ' MB';
+  const tabs = document.getElementById('tabs');
+  const show = i => {
+    const it = d.items[i];
+    document.getElementById('qr').src = it.qr; document.getElementById('url').textContent = it.url;
+    [...tabs.children].forEach((b, j) => b.classList.toggle('on', j === i));
+  };
+  d.items.forEach((it, i) => { const b = document.createElement('button'); b.textContent = it.label; b.onclick = () => show(i); tabs.appendChild(b); });
+  show(0);
+})();
+</script></body></html>

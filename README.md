@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="docs/fly-20s.mp4?raw=true"><img src="docs/fly-20s.webp" width="720" alt="Vídeo de 20 segundos mostrando o Fly: foto arremessada do celular pro PC e arquivo enviado de volta pelo portal"></a><br>
-  <sub><a href="docs/fly-20s.mp4?raw=true">▶ Assistir o vídeo completo, com som (20 s)</a></sub>
+  <sub><a href="docs/fly-20s.mp4?raw=true">Baixar o vídeo completo, com som (20 s, 10,8 MB)</a></sub>
 </p>
 
 # Fly

@@ -1,11 +1,8 @@
 <p align="center"><img src="pc/assets/icon.png" width="128" alt="Fly"></p>
 
-<p align="center">
-  <a href="docs/fly-20s.mp4?raw=true"><img src="docs/fly-20s.webp" width="720" alt="Vídeo de 20 segundos mostrando o Fly: foto arremessada do celular pro PC e arquivo enviado de volta pelo portal"></a><br>
-  <sub><a href="docs/fly-20s.mp4?raw=true">Baixar o vídeo completo, com som (20 s, 10,8 MB)</a></sub>
-</p>
-
 # Fly
+
+https://github.com/user-attachments/assets/24d6dd51-8f36-41df-afda-1658128a7776
 
 Arremesse foto, arquivo, link e texto entre o celular Android e o PC com Windows. Escolha uma foto no celular, arraste pra cima, e ela pousa na tela do computador. Do PC pro celular, solte um arquivo numa barra luminosa no canto da tela.
 

@@ -1,7 +1,7 @@
 {
   "name": "zarpa",
   "productName": "Fly",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Arremesse fotos e arquivos do celular para o PC",
   "author": "Fly",
   "main": "main.js",

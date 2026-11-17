@@ -13,6 +13,10 @@ contextBridge.exposeInMainWorld('zarpa', {
   idle: () => ipcRenderer.send('idle'),
   // portal (barra luminosa no canto)
   portalSize: s => ipcRenderer.send('portal-size', s),
+  cfgGet: () => ipcRenderer.invoke('cfg-get'),
+  cfgSet: p => ipcRenderer.invoke('cfg-set', p),
+  onCfg: cb => ipcRenderer.on('cfg-update', (_e, d) => cb(d)),
+  portalTest: () => ipcRenderer.send('portal-test'),
   // parear
   onPair: cb => ipcRenderer.on('pair', (_e, d) => cb(d)),
   onPaired: cb => ipcRenderer.on('paired', () => cb()),

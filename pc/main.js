@@ -252,6 +252,27 @@ function makePortal() {
 }
 function killPortal() { if (portal && !portal.isDestroyed()) portal.destroy(); portal = null; }
 ipcMain.on('portal-size', (_e, s) => { if (PORTAL_SIZE[s]) { portalState = s; portalPlace(); } });
+// configurações do portal (aba Configurações da janela principal)
+const PORTAL_TIMEOUTS = [10, 15, 30, 60];
+const portalOpts = () => ({ portal: cfg.portal !== false, timeout: PORTAL_TIMEOUTS.includes(cfg.portalTimeout) ? cfg.portalTimeout : 15 });
+function portalSet(on) {
+  cfg.portal = on; saveCfg();
+  if (on) makePortal(); else killPortal();
+  if (tray) tray.setContextMenu(buildMenu());
+  broadcastCfg();
+}
+function broadcastCfg() { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('cfg-update', portalOpts()); }
+ipcMain.handle('cfg-get', () => portalOpts());
+ipcMain.handle('cfg-set', (_e, p) => {
+  p = p || {};
+  if (typeof p.portal === 'boolean') portalSet(p.portal);
+  if (PORTAL_TIMEOUTS.includes(p.timeout)) { cfg.portalTimeout = p.timeout; saveCfg(); broadcastCfg(); }
+  return portalOpts();
+});
+ipcMain.on('portal-test', () => {
+  if (!portal || portal.isDestroyed()) return;
+  portal.webContents.executeJavaScript('demoPop()').catch(() => {});
+});
 const shown = new Set();   // ids de envios que já têm cartão na tela
 function fileSrc(file) { return IMG_EXT.has(path.extname(file).toLowerCase()) ? require('url').pathToFileURL(file).href : null; }
 // Ícone usado ao arrastar o arquivo pra fora. Calculado depois do pouso, sem travar nada.
@@ -511,7 +532,7 @@ function buildMenu() {
     { label: 'Efeito do pouso', submenu: [
       { label: 'Brilho na borda', type: 'radio', checked: cfg.effect === 'glow', click: () => { cfg.effect = 'glow'; saveCfg(); } },
       { label: 'Onda', type: 'radio', checked: cfg.effect === 'ripple', click: () => { cfg.effect = 'ripple'; saveCfg(); } } ] },
-    { label: 'Portal no canto da tela', type: 'checkbox', checked: cfg.portal !== false, click: m => { cfg.portal = m.checked; saveCfg(); if (m.checked) makePortal(); else killPortal(); } },
+    { label: 'Portal no canto da tela', type: 'checkbox', checked: cfg.portal !== false, click: m => portalSet(m.checked) },
     { label: 'Iniciar com o Windows', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: m => app.setLoginItemSettings({ openAtLogin: m.checked }) },
     { label: 'Desparear todos os celulares', click: () => { cfg.token = crypto.randomBytes(24).toString('hex'); saveCfg(); } },
     { type: 'separator' },

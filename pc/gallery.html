@@ -55,6 +55,15 @@ h2{font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;lett
 .out .tx{flex:1;min-width:0}.out .tx b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.out .tx span{font-size:11.5px;color:var(--mut)}
 .chip{font-size:11.5px;padding:3px 10px;border-radius:99px;background:#ffffff14;white-space:nowrap}
 .chip.ok{background:#34d39922;color:#34d399}.chip.wait{background:#fbbf2422;color:#fbbf24}.chip.no{background:#d4af3722;color:#d4af37}
+.cfgrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid #ffffff14}
+.cfgrow b{display:block;font-size:14px}.cfgrow small{display:block;font-size:12px;color:var(--mut);margin-top:2px}
+.cfgrow input[type=checkbox]{width:40px;height:22px;appearance:none;border-radius:99px;background:#ffffff26;position:relative;cursor:pointer;transition:background .15s;flex:none}
+.cfgrow input[type=checkbox]::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#f5efe0;transition:transform .15s}
+.cfgrow input[type=checkbox]:checked{background:linear-gradient(90deg,var(--a),var(--c))}
+.cfgrow input[type=checkbox]:checked::after{transform:translateX(18px);background:#1a1405}
+.cfgrow select{background:#ffffff12;border:1px solid #ffffff24;color:var(--ink);border-radius:10px;padding:7px 10px;font:inherit;font-size:13px;flex:none}
+.cfgrow select option{background:#1c1a14}
+.btn:disabled,.cfgrow select:disabled{opacity:.4;cursor:default}
 .x{border:0;background:transparent;color:var(--mut);cursor:pointer;font-size:18px;padding:2px 6px}.x:hover{color:var(--ink)}
 </style></head>
 <body>
@@ -63,7 +72,7 @@ h2{font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;lett
   <div><h1>Fly</h1><div class="sub" id="count">carregando…</div></div>
   <div class="st"><span class="dot" id="dot"></span><span id="stxt">…</span></div>
   <div class="sp"></div>
-  <button class="btn" id="apk">App do celular (QR)</button>
+  <button class="btn" id="apk">Baixar app celular (QR)</button>
   <button class="btn" id="folder">Abrir pasta</button>
   <button class="btn pri" id="pair">Parear celular</button>
 </header>
@@ -71,6 +80,7 @@ h2{font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;lett
   <button id="tIn" class="on">Recebidos</button>
   <button id="tOut">Enviar pro celular</button>
   <button id="tUpd">Atualizações</button>
+  <button id="tCfg">Configurações</button>
 </nav>
 
 <!-- ===== aba 1: o que chegou do celular ===== -->
@@ -114,6 +124,22 @@ h2{font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;lett
   <div id="ulast"></div>
 </section>
 
+<!-- ===== aba 4: configurações ===== -->
+<section class="view" id="vCfg">
+  <h2>Portal</h2>
+  <div class="dz" style="text-align:left;padding:20px 24px">
+    <div class="hint" style="padding:0 0 12px">A barrinha dourada no canto de baixo à direita da tela. Arraste um arquivo, link ou texto até ela e solte pra mandar pro celular.</div>
+    <label class="cfgrow"><span><b>Portal ligado</b><small>Mostra a barra no canto da tela, por cima das outras janelas.</small></span>
+      <input type="checkbox" id="cPortal"></label>
+    <label class="cfgrow"><span><b>Tempo pra responder</b><small>Se o pop-up "Enviar pro celular?" ficar sem resposta, conta como Não.</small></span>
+      <select id="cTime"><option value="10">10 segundos</option><option value="15">15 segundos</option><option value="30">30 segundos</option><option value="60">1 minuto</option></select></label>
+    <div class="row" style="justify-content:flex-start;margin-top:14px;display:flex">
+      <button class="btn" id="cTest">Testar portal</button>
+    </div>
+    <div class="hint" id="cHint" style="padding-top:10px">O teste abre o pop-up de exemplo no canto da tela. O "Sim" do teste só fecha, não envia nada.</div>
+  </div>
+</section>
+
 <script>
 const $ = id => document.getElementById(id);
 const items = new Map();
@@ -130,13 +156,26 @@ const hhmm = t => new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', min
 
 /* ---------- abas ---------- */
 function tab(which) {
-  for (const [k, t, v] of [['in', 'tIn', 'vIn'], ['out', 'tOut', 'vOut'], ['upd', 'tUpd', 'vUpd']]) {
+  for (const [k, t, v] of [['in', 'tIn', 'vIn'], ['out', 'tOut', 'vOut'], ['upd', 'tUpd', 'vUpd'], ['cfg', 'tCfg', 'vCfg']]) {
     $(t).classList.toggle('on', which === k); $(v).classList.toggle('on', which === k);
   }
   if (which === 'out') refreshOut();
   if (which === 'upd') refreshUpd();
+  if (which === 'cfg') refreshCfg();
 }
-$('tIn').onclick = () => tab('in'); $('tOut').onclick = () => tab('out'); $('tUpd').onclick = () => tab('upd');
+$('tIn').onclick = () => tab('in'); $('tOut').onclick = () => tab('out'); $('tUpd').onclick = () => tab('upd'); $('tCfg').onclick = () => tab('cfg');
+
+/* ---------- configurações ---------- */
+function drawCfg(c) {
+  $('cPortal').checked = !!c.portal;
+  $('cTime').value = String(c.timeout);
+  $('cTime').disabled = $('cTest').disabled = !c.portal;
+}
+async function refreshCfg() { drawCfg(await zarpa.cfgGet()); }
+$('cPortal').onchange = async () => drawCfg(await zarpa.cfgSet({ portal: $('cPortal').checked }));
+$('cTime').onchange = async () => drawCfg(await zarpa.cfgSet({ timeout: Number($('cTime').value) }));
+$('cTest').onclick = () => zarpa.portalTest();
+zarpa.onCfg(drawCfg);
 
 /* ---------- atualizações ---------- */
 async function refreshUpd() {

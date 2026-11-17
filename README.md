@@ -15,7 +15,7 @@ Arremesse foto, arquivo, link e texto entre o celular Android e o PC com Windows
 - A janela de fotos recebidas no PC guarda tudo que já chegou, agrupado por dia. Os arquivos ficam em `Downloads\Fly`.
 
 **Do PC pro celular**
-- **Portal no canto da tela:** uma barra dourada discreta no canto de baixo à direita, em cima da data e hora, sempre por cima das outras janelas. Arraste um arquivo, PDF, link ou texto até ela, solte, e responda "Sim, enviar" no pop-up. Dá pra ligar e desligar no menu do ícone da bandeja.
+- **Portal no canto da tela:** uma barra dourada discreta no canto de baixo à direita, em cima da data e hora, sempre por cima das outras janelas. Arraste um arquivo, PDF, link ou texto até ela, solte, e responda "Sim, enviar" no pop-up. Dá pra ligar e desligar, mudar o tempo pra responder e testar o pop-up na aba **Configurações** da janela principal (ou no menu do ícone da bandeja).
 - Também dá pra soltar na aba **Enviar pro celular** da janela principal.
 - O celular avisa, e você escolhe **Permitir** ou **Recusar**. Nada é baixado sem a sua permissão.
 

@@ -149,7 +149,7 @@ class MainActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = bg() }
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10), dp(34), dp(16), dp(6)) }
         bar.addView(chip("‹ Voltar") { settingsOpen = false; render() })
-        bar.addView(text("Ajustes", 20f, Color.WHITE, true, Gravity.START), LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(8) })
+        bar.addView(text("Configurações", 20f, Color.WHITE, true, Gravity.START), LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(8) })
         root.addView(bar, LinearLayout.LayoutParams(-1, -2))
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(4), dp(16), dp(24)) }
 
@@ -171,6 +171,21 @@ class MainActivity : AppCompatActivity() {
         testView!!.setPadding(dp(12), dp(22), dp(12), dp(22))
         testView!!.background = GradientDrawable().apply { setColor(0x1AFFFFFF); setStroke(dp(1), 0x33FFFFFF); cornerRadius = dp(16).toFloat() }
         col.addView(testView, mt(10))
+
+        col.addView(text("ENVIAR ARQUIVOS PRO PC", 12f, 0xFFA39B86.toInt(), true, Gravity.START), mt(28))
+        col.addView(text("Escolha arquivos do celular (PDF, documentos, vídeos…) pra mandar pro PC.", 13f, 0xFFA39B86.toInt(), false, Gravity.START), mt(6))
+        col.addView(button("Escolher arquivos…", false) { pickFiles.launch(arrayOf("*/*")) }, mt(10))
+
+        col.addView(text("CONEXÃO COM O PC", 12f, 0xFFA39B86.toInt(), true, Gravity.START), mt(28))
+        col.addView(text("Conectado a ${st.pcName}. Sair desfaz o pareamento: pra voltar a usar, é preciso escanear o QR do PC de novo.", 13f, 0xFFA39B86.toInt(), false, Gravity.START), mt(6))
+        col.addView(button("Sair", false) {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Sair e desparear?")
+                .setMessage("O celular deixa de falar com ${st.pcName}. Pra voltar, escaneie o QR do PC de novo.")
+                .setPositiveButton("Sair") { _, _ -> ListenService.stop(this); st.clear(); settingsOpen = false; render() }
+                .setNegativeButton("Cancelar", null)
+                .show()
+        }, mt(10))
 
         root.addView(ScrollView(this).apply { addView(col) }, LinearLayout.LayoutParams(-1, 0, 1f))
         return root
@@ -354,12 +369,11 @@ class MainActivity : AppCompatActivity() {
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(34), dp(8), dp(4)) }
         statusView = text("● ${st.pcName}", 13f, 0xFFA39B86.toInt(), false, Gravity.START)
         bar.addView(statusView, LinearLayout.LayoutParams(0, -2, 1f))
+        bar.addView(chip("↻") { refreshGallery() })
         inboxChip = chip(inboxLabel()) { inboxOpen = true; render() }
         bar.addView(inboxChip)
-        bar.addView(chip("Arquivos") { pickFiles.launch(arrayOf("*/*")) })
         bar.addView(chip("Link") { sendClipboardLink() })
         bar.addView(chip("⚙") { settingsOpen = true; render() })
-        bar.addView(chip("Sair") { ListenService.stop(this); st.clear(); render() })
         root.addView(bar, LinearLayout.LayoutParams(-1, -2))
         checkConnection()
         askNotifications()
@@ -574,6 +588,20 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 statusView?.text = if (h != null) "● ${st.pcName} · conectado" else "● ${st.pcName} · fora de alcance\n${Net.lastError}"
                 statusView?.setTextColor(if (h != null) 0xFF34D399.toInt() else 0xFFFBBF24.toInt())
+            }
+        }.start()
+    }
+
+    /** Lê a galeria de novo sem reiniciar o app: mantém a foto selecionada, a conexão e as miniaturas já carregadas. */
+    private fun refreshGallery() {
+        if (!hasMedia()) { toast("O Fly ainda não tem acesso às fotos"); return }
+        Thread {
+            val novo = loadMedia()
+            runOnUiThread {
+                media = novo
+                adapter?.notifyDataSetChanged()
+                if (selected == null) hintView?.text = if (novo.isEmpty()) "Nenhuma foto encontrada na galeria" else "Toque numa foto pra pegar"
+                toast("Galeria atualizada: ${novo.size} ${if (novo.size == 1) "item" else "itens"}")
             }
         }.start()
     }

@@ -97,8 +97,20 @@ window.addEventListener('drop', e => {
   $('pq').textContent = 'Enviar pro celular?'; $('btns').style.display = 'flex'; $('fb').style.display = 'none';
   B.classList.add('flash'); setTimeout(() => B.classList.remove('flash'), 350);
   setState('pop');
-  clearTimeout(popT); popT = setTimeout(back, 15000);   // sem resposta em 15 s: conta como Não
+  clearTimeout(popT); popT = setTimeout(back, timeoutS * 1000);   // sem resposta no tempo configurado (padrão 15 s): conta como Não
 });
+// tempo pra responder, vindo da aba Configurações
+let timeoutS = 15;
+zarpa.cfgGet().then(c => { if (c && c.timeout) timeoutS = c.timeout; }).catch(() => {});
+zarpa.onCfg(c => { if (c && c.timeout) timeoutS = c.timeout; });
+// "Testar portal": mostra o pop-up de exemplo. O Sim só fecha, não envia nada.
+function demoPop() {
+  pending = null;
+  $('pn').textContent = 'relatorio.pdf'; $('ps').textContent = '2,4 MB';
+  $('pq').textContent = 'Enviar pro celular? (teste)'; $('btns').style.display = 'flex'; $('fb').style.display = 'none';
+  B.classList.add('flash'); setTimeout(() => B.classList.remove('flash'), 350);
+  setState('pop'); clearTimeout(popT); popT = setTimeout(back, timeoutS * 1000);
+}
 function fail(msg) {
   $('pn').textContent = 'Não deu'; $('ps').textContent = ''; $('pq').textContent = msg; $('btns').style.display = 'none'; $('fb').style.display = 'none';
   setState('pop'); clearTimeout(popT); popT = setTimeout(back, 4500);

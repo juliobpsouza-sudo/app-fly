@@ -11,8 +11,8 @@ android {
         applicationId = "app.zarpa"
         minSdk = 29
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.5.3"
+        versionCode = 13
+        versionName = "0.5.4"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

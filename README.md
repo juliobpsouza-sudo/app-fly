@@ -1,8 +1,8 @@
 <p align="center"><img src="pc/assets/icon.png" width="128" alt="Fly"></p>
 
 <p align="center">
-  <video src="docs/fly-20s.mp4" poster="docs/fly-20s.png" controls muted width="720"></video><br>
-  <sub>Se o vídeo não abrir aqui, <a href="docs/fly-20s.mp4">veja o arquivo</a>.</sub>
+  <a href="docs/fly-20s.mp4?raw=true"><img src="docs/fly-20s.webp" width="720" alt="Vídeo de 20 segundos mostrando o Fly: foto arremessada do celular pro PC e arquivo enviado de volta pelo portal"></a><br>
+  <sub><a href="docs/fly-20s.mp4?raw=true">▶ Assistir o vídeo completo, com som (20 s)</a></sub>
 </p>
 
 # Fly

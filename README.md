@@ -30,7 +30,7 @@ Arremesse foto, arquivo, link e texto entre o celular Android e o PC com Windows
 1. Em [Releases](../../releases/latest), baixe `Fly-Setup-<versão>.exe` e rode. O Windows vai avisar (SmartScreen), porque o instalador **não é assinado**: clique em "Mais informações" e "Executar assim mesmo". Ele pede permissão de administrador pra criar a regra do firewall.
 2. Na primeira vez o Fly mostra o QR do app do celular. Aponte a câmera, baixe e instale o APK (o Android pede pra liberar a instalação de apps daquele navegador).
 3. Clique em "Já instalei o app: parear o celular". Abra o Fly no celular, toque em **Escanear QR do PC** e aponte pro QR que aparece. A janela fecha sozinha quando o celular conecta.
-4. **Sem Wi-Fi em comum?** Instale o [Tailscale](https://tailscale.com) no PC e no celular e ligue nos dois. O Fly também funciona por ele.
+4. **Instale o [Tailscale](https://tailscale.com)** no PC e no celular e ligue nos dois. O Fly funciona só com o Wi-Fi, mas com o Tailscale a conexão fica melhor, e ele também funciona quando o PC e o celular não estão na mesma rede.
 
 O Fly abre junto com o Windows (dá pra desligar no menu da bandeja).
 

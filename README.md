@@ -28,16 +28,6 @@ Arremesse foto, arquivo, link e texto entre o celular Android e o PC com Windows
 **Entre aparelhos, passando pelo PC**
 - Com mais de um celular ou tablet pareado com o mesmo PC, toque no nome do destino no topo do app e escolha pra onde vai. O PC faz a ponte, e o outro aparelho pede **Permitir** antes de receber.
 
-## Atualizações
-
-| Versão | O que mudou | Resumo |
-|---|---|---|
-| **[0.5.9](../../releases/tag/v0.5.9)** | Ponte entre aparelhos e conexão mais firme | Manda pra outro celular ou tablet passando pelo PC, escolhe o aparelho no PC, "Receber" no lugar de "Do PC", configurações do celular em cartões, e o envio volta a funcionar logo depois de religar o PC. |
-| **[0.5.4](../../releases/tag/v0.5.4)** | Aba Configurações e topo novo no celular | Configurações do portal no PC (ligar, tempo pra responder, testar) e um topo mais limpo no app do celular. |
-| **[0.5.3](../../releases/tag/v0.5.3)** | Primeira versão pública | Arremessar do celular pro PC e do PC pro celular, portal no canto da tela, pareamento por QR e o app do celular dentro do instalador. |
-
-Os detalhes de cada versão estão no [CHANGELOG](CHANGELOG.md).
-
 ## Como rodar (Windows 10 e 11, Android 10 ou mais novo)
 
 1. Em [Releases](../../releases/latest), baixe `Fly-Setup-<versão>.exe` e rode. O Windows vai avisar (SmartScreen), porque o instalador **não é assinado**: clique em "Mais informações" e "Executar assim mesmo". Ele pede permissão de administrador pra criar a regra do firewall.
@@ -69,6 +59,16 @@ Precisa de Node.js, JDK 17, Android SDK 35 (plataforma e build-tools 35.0.0) e G
 3. **Só rodar, sem instalar:** em `pc/`, `npm ci` e `npx electron .`
 
 Antes de uma nova versão, suba `versionCode` e `versionName` em `android/app/build.gradle.kts` e `version` em `pc/package.json`.
+
+## Atualizações
+
+| Versão | O que mudou | Resumo |
+|---|---|---|
+| **[0.5.9](../../releases/tag/v0.5.9)** | Ponte entre aparelhos e conexão mais firme | Manda pra outro celular ou tablet passando pelo PC, escolhe o aparelho no PC, "Receber" no lugar de "Do PC", configurações do celular em cartões, e o envio volta a funcionar logo depois de religar o PC. |
+| **[0.5.4](../../releases/tag/v0.5.4)** | Aba Configurações e topo novo no celular | Configurações do portal no PC (ligar, tempo pra responder, testar) e um topo mais limpo no app do celular. |
+| **[0.5.3](../../releases/tag/v0.5.3)** | Primeira versão pública | Arremessar do celular pro PC e do PC pro celular, portal no canto da tela, pareamento por QR e o app do celular dentro do instalador. |
+
+Os detalhes de cada versão estão no [CHANGELOG](CHANGELOG.md).
 
 ## Licença
 

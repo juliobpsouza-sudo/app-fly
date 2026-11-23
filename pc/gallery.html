@@ -65,6 +65,10 @@ h2{font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;lett
 .cfgrow select option{background:#1c1a14}
 .btn:disabled,.cfgrow select:disabled{opacity:.4;cursor:default}
 .x{border:0;background:transparent;color:var(--mut);cursor:pointer;font-size:18px;padding:2px 6px}.x:hover{color:var(--ink)}
+.devs{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;font-size:13px;color:var(--mut)}
+.dv{display:flex;align-items:center;gap:7px;border:1px solid #ffffff24;background:#ffffff0d;color:var(--ink);border-radius:99px;padding:6px 14px;font:inherit;font-size:13px;cursor:pointer}
+.dv:hover{background:#ffffff1a}.dv.on{border-color:var(--b);background:#ffe9a01f;font-weight:700}
+.dv .dot{flex:none}
 </style></head>
 <body>
 <header>
@@ -91,6 +95,7 @@ h2{font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;lett
 
 <!-- ===== aba 2: mandar do PC pro celular ===== -->
 <section class="view" id="vOut">
+  <div class="devs" id="devs"></div>
   <div class="dz" id="dz">
     <div class="big">⇪</div>
     <b>Solte aqui o que você quer mandar pro celular</b>
@@ -184,13 +189,15 @@ async function refreshUpd() {
   $('uv').textContent = '';
   const line = (a, b) => { const d = document.createElement('div'); const s = document.createElement('b'); s.textContent = a + ' '; d.append(s, document.createTextNode(b)); $('uv').appendChild(d); };
   line('Versão pronta neste PC:', i.ok ? `${i.apkVersion || '?'} (${mb} MB)` : 'APK não encontrado');
-  line('Versão no celular:', i.unknown ? 'ainda não sei (abra o Fly no celular uma vez)' : i.phoneVersion);
+  if (i.devices && i.devices.length) for (const d of i.devices) line(d.name + ':', d.ver ? d.ver + (d.newer ? ' (desatualizado)' : '') : 'ainda não sei');
+  else line('Versão no celular:', i.unknown ? 'ainda não sei (abra o Fly no celular uma vez)' : i.phoneVersion);
   const b = $('ub'); b.textContent = '';
   const chip = document.createElement('span'); chip.className = 'chip ' + (i.newer ? 'wait' : (i.unknown ? '' : 'ok'));
   chip.textContent = i.newer ? 'Atualização disponível' : (i.unknown ? 'sem informação do celular' : 'celular em dia ✓');
   b.appendChild(chip);
   $('usend').disabled = !i.ok;
   const last = out.items.find(x => x.update), box = $('ulast'); box.textContent = '';
+  if (last && last.toName) last.name += ' · pro ' + last.toName;
   if (!last) { const p = document.createElement('div'); p.className = 'hint'; p.textContent = 'Nenhuma enviada ainda.'; box.appendChild(p); return; }
   const row = document.createElement('div'); row.className = 'out';
   const ic = document.createElement('div'); ic.className = 'ic'; ic.textContent = '⬆';
@@ -202,7 +209,7 @@ async function refreshUpd() {
 }
 $('usend').onclick = async () => {
   const r = await zarpa.updSend();
-  $('umsg').textContent = r.error ? r.error : 'Enviada! O celular vai avisar. Toque no aviso e escolha Permitir.';
+  $('umsg').textContent = r.error ? r.error : (r.count > 1 ? `Enviada pros ${r.count} aparelhos!` : 'Enviada!') + ' O celular vai avisar. Toque no aviso e escolha Permitir.';
   refreshUpd();
 };
 $('uqr').onclick = () => zarpa.apkOpen();
@@ -265,9 +272,24 @@ zarpa.onLibThumb(({ path, thumb }) => {
 /* ---------- enviar pro celular ---------- */
 const ICON = { file: '📄', link: '🔗', text: '📝' };
 const STATE = { pending: ['aguardando o celular', 'wait'], delivered: ['entregue ✓', 'ok'], declined: ['recusado', 'no'] };
+function drawDevs(d) {
+  const box = $('devs'); box.textContent = '';
+  if (!d.devices || !d.devices.length) return;
+  const l = document.createElement('span'); l.textContent = 'Mandar para:'; box.appendChild(l);
+  for (const dv of d.devices) {
+    const b = document.createElement('button'); b.className = 'dv' + (dv.id === d.target ? ' on' : '');
+    const dot = document.createElement('span'); dot.className = 'dot' + (dv.online ? ' on' : '');
+    b.append(dot, document.createTextNode(dv.name));
+    b.title = dv.online ? 'conectado agora' : 'fora de alcance: recebe quando conectar';
+    b.onclick = async () => drawOut(await zarpa.outTarget(dv.id));
+    box.appendChild(b);
+  }
+}
 function drawOut(d) {
+  drawDevs(d);
+  const who = d.targetName || 'celular';
   $('odot').className = 'dot' + (d.online ? ' on' : '');
-  $('otxt').textContent = d.online ? 'celular conectado: recebe na hora' : 'celular offline: recebe quando conectar (precisa estar no Wi-Fi ou com o Tailscale ligado)';
+  $('otxt').textContent = d.online ? `${who} conectado: recebe na hora` : `${who} offline: recebe quando conectar (precisa estar no Wi-Fi ou com o Tailscale ligado)`;
   const box = $('outList'); box.textContent = '';
   if (!d.items.length) { const p = document.createElement('div'); p.className = 'hint'; p.textContent = 'Nada enviado ainda.'; box.appendChild(p); return; }
   for (const i of d.items) {
@@ -276,7 +298,8 @@ function drawOut(d) {
     const tx = document.createElement('div'); tx.className = 'tx';
     const b = document.createElement('b'); b.textContent = i.name;
     const s = document.createElement('span');
-    s.textContent = hhmm(i.created) + (i.kind === 'file' ? ' · ' + fmtSize(i.size) : '') + (i.preview && i.kind !== 'file' ? ' · ' + i.preview : '');
+    s.textContent = hhmm(i.created) + (i.kind === 'file' ? ' · ' + fmtSize(i.size) : '') + (i.preview && i.kind !== 'file' ? ' · ' + i.preview : '')
+      + (i.from ? ` · ${i.from} → ${i.toName}` : (i.toName ? ' · pro ' + i.toName : ''));
     tx.append(b, s);
     const [t, cls] = STATE[i.state] || ['', ''];
     const chip = document.createElement('span'); chip.className = 'chip ' + cls; chip.textContent = t;

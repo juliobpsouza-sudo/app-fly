@@ -46,7 +46,7 @@ class ShareActivity : AppCompatActivity() {
         }
         col.addView(card, LinearLayout.LayoutParams(dp(150), dp(112)).apply { bottomMargin = dp(26) })
         title = TextView(this).apply { text = "Procurando o PC…"; textSize = 20f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD) }
-        sub = TextView(this).apply { text = st.pcName; textSize = 13f; setTextColor(0xFFA39B86.toInt()); gravity = Gravity.CENTER }
+        sub = TextView(this).apply { text = if (st.target.isEmpty()) st.pcName else "pro ${st.destName}, pelo PC"; textSize = 13f; setTextColor(0xFFA39B86.toInt()); gravity = Gravity.CENTER }
         bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate = true; max = 100 }
         col.addView(title); col.addView(sub, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
         col.addView(bar, LinearLayout.LayoutParams(dp(220), dp(8)).apply { topMargin = dp(20) })
@@ -67,17 +67,23 @@ class ShareActivity : AppCompatActivity() {
                 val host = Net.findHost(st) ?: throw Exception("Não achei o PC. Ele está ligado, com o Fly aberto e no mesmo Wi-Fi (ou com o Tailscale ligado)?\n${Net.lastError}")
                 if (link != null) {
                     runOnUiThread { title.text = "Voando…"; sub.text = link }
-                    Net.sendLink(st, host, link)
+                    // erro de rede: tenta de novo UMA vez só
+                    Net.withOneRetry(st, host) { h -> Net.sendLink(st, h, link) }
                 } else {
+                    var h0 = host
                     uris.forEachIndexed { i, uri ->
                         val (name, size) = Net.fileInfo(this, uri)
                         runOnUiThread { title.text = "Voando… ${i + 1} de ${uris.size}"; sub.text = name; bar.isIndeterminate = size <= 0; bar.progress = 0 }
-                        Net.upload(this, st, host, uri, name, null, size) { done ->
-                            if (size > 0) runOnUiThread { bar.progress = (done * 100 / size).toInt() }
+                        Net.withOneRetry(st, h0) { h ->
+                            h0 = h
+                            runOnUiThread { bar.progress = 0 }
+                            Net.upload(this, st, h, uri, name, null, size) { done ->
+                                if (size > 0) runOnUiThread { bar.progress = (done * 100 / size).toInt() }
+                            }
                         }
                     }
                 }
-                runOnUiThread { fly("Pousou no PC ✓") }
+                runOnUiThread { fly(when { st.target.isNotEmpty() -> "Enviado pro ${st.destName} ✓"; else -> "Pousou no PC ✓" }) }
             } catch (e: Exception) {
                 runOnUiThread { fail(e.message ?: "Falhou") }
             }

@@ -84,6 +84,7 @@ class MainActivity : AppCompatActivity() {
     private var detector: FlickDetector? = null
     private var throwCard: View? = null
     private var testView: TextView? = null
+    private var forceMeter: ForceMeter? = null
     private var inboxChip: TextView? = null
     private var askedNotif = false
     private val recent = ArrayList<Pair<String, Uri?>>()   // o que já foi aceito nesta sessão
@@ -109,7 +110,9 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Inbox.listeners.add(inboxListener)
+        Net.onHostChanged = { h -> cachedHost = h }
         ListenService.start(this)
+        ListenService.kick()   // abriu o app: a conexão de fundo tenta de novo na hora, sem esperar a pausa
         if (inboxOpen || ::st.isInitialized) { updateInboxChip() }
         startDetector()
     }
@@ -126,8 +129,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun onFlick(peak: Float, fired: Boolean) {
         if (settingsOpen) {   // tela de teste: mostra a força de cada empurrão
-            testView?.text = String.format("Último empurrão: %.1f m/s²\n%s", peak,
-                if (peak >= st.flickThr) "✓ passou do limite (${st.flickThr.toInt()})" else "abaixo do limite (${st.flickThr.toInt()}). Mais força!")
+            testView?.text = if (peak >= st.flickThr) String.format("✓  Arremessaria!  (%.0f)", peak) else String.format("Quase…  faltou força  (%.0f de %.0f)", peak, st.flickThr)
+            forceMeter?.set(peak, st.flickThr)
             if (fired) vibrate()
             return
         }
@@ -153,32 +156,54 @@ class MainActivity : AppCompatActivity() {
         root.addView(bar, LinearLayout.LayoutParams(-1, -2))
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(4), dp(16), dp(24)) }
 
-        col.addView(text("EMPURRAR O CELULAR PRA ARREMESSAR", 12f, 0xFFA39B86.toInt(), true, Gravity.START), mt(14))
-        col.addView(text("Escolha uma foto e dê um empurrão rápido no celular pra frente, como quem joga. Ela é arremessada igual a arrastar pra cima. Balançar de lado ou andar não dispara.", 13f, 0xFFA39B86.toInt(), false, Gravity.START), mt(6))
-        if (detector == null && !FlickDetector(this, 0f) { _, _ -> }.available) col.addView(text("Este aparelho não tem o sensor necessário.", 13f, 0xFFFBBF24.toInt(), false, Gravity.START), mt(6))
-        col.addView(button(if (st.flick) "Ligado (toque pra desligar)" else "Desligado (toque pra ligar)", st.flick) { st.flick = !st.flick; startDetector(); render() }, mt(10))
+        // ----- Empurrar o celular pra arremessar: o cartão de destaque, com o gesto animado -----
+        val flick = card("➶", "Empurrar o celular pra arremessar", "Escolha uma foto e dê um empurrão rápido pra frente, como quem joga algo. Ela voa pro PC igual a arrastar pra cima.")
+        val demo = FlickDemo(this).apply { on = st.flick }
+        flick.addView(demo, mt(4))
+        if (detector == null && !FlickDetector(this, 0f) { _, _ -> }.available) flick.addView(text("Este aparelho não tem o sensor necessário.", 14f, 0xFFFBBF24.toInt(), false, Gravity.START), mt(6))
+        flick.addView(button(if (st.flick) "✓  Ligado" else "Desligado  ·  toque pra ligar", st.flick) { st.flick = !st.flick; startDetector(); render() }, mt(6))
+        flick.addView(text("Balançar de lado ou andar com o celular não dispara.", 13f, 0xFF8A826F.toInt(), false, Gravity.START), mt(8))
+        col.addView(flick, mt(12))
 
-        col.addView(text("FORÇA NECESSÁRIA", 12f, 0xFFA39B86.toInt(), true, Gravity.START), mt(22))
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        for ((label, v) in listOf("Sensível" to 8f, "Normal" to 12f, "Firme" to 17f)) {
-            row.addView(button(label, st.flickThr == v) { st.flickThr = v; detector?.threshold = v; render() }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(6) })
+        // ----- Força: cada opção diz o que faz na prática -----
+        val force = card("◉", "Quanta força precisa", "Escolha o quanto você precisa empurrar pra foto sair.")
+        for ((v, t3) in listOf(
+            8f to Triple("Sensível", "Um empurrãozinho já joga. Use se o empurrão não está saindo.", 1),
+            12f to Triple("Normal", "Um empurrão de quem joga algo. O jeito recomendado.", 2),
+            17f to Triple("Firme", "Só um arremesso forte. Use se está disparando sem querer.", 3))) {
+            force.addView(option(t3.first, t3.second, t3.third, st.flickThr == v) { st.flickThr = v; detector?.threshold = v; forceMeter?.limit(v); render() }, mt(8))
         }
-        col.addView(row, mt(8))
+        col.addView(force, mt(14))
 
-        col.addView(text("TESTE", 12f, 0xFFA39B86.toInt(), true, Gravity.START), mt(24))
-        col.addView(text("Segure o celular e empurre rápido pra frente. A força do empurrão aparece aqui e o celular vibra se passar do limite. Se não passar, use Sensível; se disparar sem querer, use Firme.", 13f, 0xFFA39B86.toInt(), false, Gravity.START), mt(6))
-        testView = text("Último empurrão: —", 18f, Color.WHITE, true)
-        testView!!.setPadding(dp(12), dp(22), dp(12), dp(22))
+        // ----- Teste ao vivo -----
+        val test = card("⚡", "Teste o seu empurrão", "Segure o celular e empurre pra frente. A barra mostra a força; passou da linha, o celular vibra.")
+        forceMeter = ForceMeter(this).apply { limit(st.flickThr) }
+        test.addView(forceMeter, mt(10))
+        testView = text("Empurre agora…", 18f, Color.WHITE, true)
+        testView!!.setPadding(dp(12), dp(16), dp(12), dp(16))
         testView!!.background = GradientDrawable().apply { setColor(0x1AFFFFFF); setStroke(dp(1), 0x33FFFFFF); cornerRadius = dp(16).toFloat() }
-        col.addView(testView, mt(10))
+        test.addView(testView, mt(6))
+        col.addView(test, mt(14))
 
-        col.addView(text("ENVIAR ARQUIVOS PRO PC", 12f, 0xFFA39B86.toInt(), true, Gravity.START), mt(28))
-        col.addView(text("Escolha arquivos do celular (PDF, documentos, vídeos…) pra mandar pro PC.", 13f, 0xFFA39B86.toInt(), false, Gravity.START), mt(6))
-        col.addView(button("Escolher arquivos…", false) { pickFiles.launch(arrayOf("*/*")) }, mt(10))
+        val files = card("📎", "Enviar arquivos", "PDF, documentos, vídeos… vão pro destino escolhido no topo: agora, ${st.destName}.")
+        files.addView(button("Escolher arquivos…", false) { pickFiles.launch(arrayOf("*/*")) }, mt(10))
+        col.addView(files, mt(14))
 
-        col.addView(text("CONEXÃO COM O PC", 12f, 0xFFA39B86.toInt(), true, Gravity.START), mt(28))
-        col.addView(text("Conectado a ${st.pcName}. Sair desfaz o pareamento: pra voltar a usar, é preciso escanear o QR do PC de novo.", 13f, 0xFFA39B86.toInt(), false, Gravity.START), mt(6))
-        col.addView(button("Sair", false) {
+        val name = card("📱", "Nome deste aparelho", "É como ele aparece no PC e nos outros aparelhos na hora de escolher pra onde mandar.")
+        val nameField = field("Nome (ex.: Tablet)", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS).apply { setText(st.devName) }
+        name.addView(nameField, mt(10))
+        col.addView(name, mt(14))
+        name.addView(button("Salvar nome", false) {
+            val n = nameField.text.toString().trim()
+            if (n.isEmpty()) { toast("Escreva um nome"); return@button }
+            st.devName = n
+            Thread { (cachedHost ?: Net.findHost(st))?.let { h -> Net.hello(st, h) } }.start()   // o PC já fica sabendo do nome novo
+            toast("Nome salvo: $n")
+        }, mt(8))
+
+        val conn = card("🔗", "Conexão com o PC", "Conectado a ${st.pcName}. Sair desfaz o pareamento: pra voltar, é preciso escanear o QR do PC de novo.")
+        col.addView(conn, mt(14))
+        conn.addView(button("Sair", false) {
             androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle("Sair e desparear?")
                 .setMessage("O celular deixa de falar com ${st.pcName}. Pra voltar, escaneie o QR do PC de novo.")
@@ -191,7 +216,7 @@ class MainActivity : AppCompatActivity() {
         return root
     }
 
-    private fun inboxLabel(): String { val n = Inbox.pending().size; return if (n > 0) "Do PC ($n)" else "Do PC" }
+    private fun inboxLabel(): String { val n = Inbox.pending().size; return if (n > 0) "Receber ($n)" else "Receber" }
     private fun updateInboxChip() { inboxChip?.text = inboxLabel() }
 
     private fun askNotifications() {
@@ -204,13 +229,13 @@ class MainActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = bg() }
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10), dp(34), dp(16), dp(6)) }
         bar.addView(chip("‹ Voltar") { inboxOpen = false; render() })
-        bar.addView(text("Do PC", 20f, Color.WHITE, true, Gravity.START), LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(8) })
+        bar.addView(text("Receber", 20f, Color.WHITE, true, Gravity.START), LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(8) })
         root.addView(bar, LinearLayout.LayoutParams(-1, -2))
 
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(4), dp(16), dp(24)) }
         val items = Inbox.pending()
         if (items.isEmpty() && recent.isEmpty())
-            col.addView(text("Nada esperando agora.\nQuando você soltar algo no Fly do PC, aparece aqui e o celular avisa.", 14f, 0xFFA39B86.toInt(), false), mt(40))
+            col.addView(text("Nada esperando agora.\nQuando você soltar algo no Fly do PC (ou outro aparelho mandar pra cá), aparece aqui e o celular avisa.", 14f, 0xFFA39B86.toInt(), false), mt(40))
         items.forEach { col.addView(inboxCard(it), mt(10)) }
         if (recent.isNotEmpty()) {
             col.addView(text("RECEBIDO AGORA", 12f, 0xFFA39B86.toInt(), true, Gravity.START), mt(24))
@@ -245,7 +270,8 @@ class MainActivity : AppCompatActivity() {
         card.addView(text(kind, 12f, 0xFFFFE9A0.toInt(), true, Gravity.START))
         val title = when (it.kind) { "link" -> it.url ?: it.name; "text" -> (it.text ?: "").take(400); else -> it.name }
         card.addView(text(title, 15f, Color.WHITE, it.kind == "file", Gravity.START), mt(4))
-        if (it.kind == "file") card.addView(text(fmt(it.size) + " · do seu PC", 12f, 0xFFA39B86.toInt(), false, Gravity.START), mt(2))
+        if (it.kind == "file") card.addView(text(fmt(it.size) + " · " + (if (it.from != null) "de ${it.from}, pelo PC" else "do seu PC"), 12f, 0xFFA39B86.toInt(), false, Gravity.START), mt(2))
+        else if (it.from != null) card.addView(text("de ${it.from}, pelo PC", 12f, 0xFFA39B86.toInt(), false, Gravity.START), mt(2))
         val status = text("", 13f, 0xFFFBBF24.toInt(), false, Gravity.START)
         card.addView(status, mt(6))
         val btns = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -367,7 +393,10 @@ class MainActivity : AppCompatActivity() {
 
         // barra do topo
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(34), dp(8), dp(4)) }
-        statusView = text("● ${st.pcName}", 13f, 0xFFA39B86.toInt(), false, Gravity.START)
+        statusView = text("● ${destLabel()}", 13f, 0xFFA39B86.toInt(), false, Gravity.START).apply {
+            setOnClickListener { pickTarget() }   // toque no nome do destino pra trocar (PC, tablet, outro celular)
+            setPadding(0, dp(8), dp(8), dp(8))
+        }
         bar.addView(statusView, LinearLayout.LayoutParams(0, -2, 1f))
         bar.addView(chip("↻") { refreshGallery() })
         inboxChip = chip(inboxLabel()) { inboxOpen = true; render() }
@@ -534,8 +563,8 @@ class MainActivity : AppCompatActivity() {
         val id = java.util.UUID.randomUUID().toString().replace("-", "").take(12)
         val (name, size) = Net.fileInfo(this, uri)
 
-        // 1) Prévia leve, em paralelo: faz a foto "pousar" no PC na hora.
-        previewer.execute {
+        // 1) Prévia leve, em paralelo: faz a foto "pousar" no PC na hora. (Indo pra outro aparelho não precisa: lá ele pede Permitir.)
+        if (st.target.isEmpty()) previewer.execute {
             try {
                 val host = cachedHost ?: Net.findHost(st)?.also { cachedHost = it } ?: return@execute
                 val bm = contentResolver.loadThumbnail(uri, Size(1280, 1280), null)
@@ -548,19 +577,12 @@ class MainActivity : AppCompatActivity() {
         // 2) Original, em segundo plano. Sem "ping" antes: só procura de novo se falhar.
         sender.execute {
             try {
-                var host = cachedHost ?: Net.findHost(st).also { cachedHost = it }
+                val host = cachedHost ?: Net.findHost(st).also { cachedHost = it }
                     ?: throw Exception("Não achei o PC. Ligue o Tailscale ou use o mesmo Wi-Fi.\n${Net.lastError}")
-                // Na rede móvel a conexão pode cair no meio (troca de rede, túnel renegociando): tenta de novo até 3 vezes.
-                var attempt = 0
-                while (true) {
-                    try { Net.upload(this, st, host, uri, name, id, size) { }; break }
-                    catch (e: java.io.IOException) {
-                        if (++attempt >= 3) throw e
-                        Thread.sleep(1500L * attempt)
-                        host = Net.findHost(st).also { cachedHost = it } ?: throw Exception("Perdi o PC no meio do envio.\n${Net.lastError}")
-                    }
-                }
-                runOnUiThread { sendErr = null; sent.add(uri); adapter?.notifyDataSetChanged() }
+                // Deu erro de rede (ex.: logo depois de o PC religar)? Tenta de novo UMA vez só, procurando o PC de novo.
+                Net.withOneRetry(st, host) { h -> Net.upload(this, st, h, uri, name, id, size) { } }
+                val relay = st.target.isNotEmpty(); val who = st.destName
+                runOnUiThread { sendErr = null; sent.add(uri); adapter?.notifyDataSetChanged(); if (relay) toast("Enviado pro $who. Ele vai avisar lá.") }
             } catch (e: Exception) {
                 runOnUiThread { sendErr = "${e.javaClass.simpleName}: ${e.message}"; toast(e.message ?: "Falhou") }
             } finally {
@@ -575,21 +597,59 @@ class MainActivity : AppCompatActivity() {
         statusView?.text = when {
             pending > 0 -> "🚀 Enviando $pending…"
             err != null -> "⚠ Último envio falhou\n$err"
-            else -> "● ${st.pcName}"
+            else -> "● ${destLabel()}  ▾"
         }
         if (pending == 0) statusView?.setTextColor(if (err != null) 0xFFFBBF24.toInt() else 0xFF34D399.toInt())
     }
 
+    /** "DESKTOP-X" quando vai pro PC; "Tablet (pelo PC)" quando vai pra outro aparelho. */
+    private fun destLabel() = if (st.target.isEmpty()) st.pcName else "${st.destName} (pelo PC)"
+
     private fun checkConnection() {
-        statusView?.text = "● ${st.pcName} · procurando…"
+        statusView?.text = "● ${destLabel()} · procurando…"
         Thread {
             val h = Net.findHost(st); cachedHost = h
-            if (h != null) Net.hello(st, h)
+            if (h != null) { Net.hello(st, h); ListenService.kick() }
             runOnUiThread {
-                statusView?.text = if (h != null) "● ${st.pcName} · conectado" else "● ${st.pcName} · fora de alcance\n${Net.lastError}"
+                statusView?.text = if (h != null) "● ${destLabel()} · conectado  ▾" else "● ${destLabel()} · fora de alcance  ▾\n${Net.lastError}"
                 statusView?.setTextColor(if (h != null) 0xFF34D399.toInt() else 0xFFFBBF24.toInt())
             }
         }.start()
+    }
+
+    /** Escolher pra onde vai o que você arremessa: o PC ou outro aparelho pareado com ele (o PC faz a ponte). */
+    private fun pickTarget() {
+        toast("Buscando os aparelhos…")
+        Thread {
+            try {
+                val h = cachedHost ?: Net.findHost(st)?.also { cachedHost = it } ?: throw Exception("Não achei o PC. Pra mandar pra outro aparelho, o PC precisa estar ligado e alcançável.")
+                val (pc, devs) = Net.devices(st, h)
+                if (pc.isNotBlank() && pc != st.pcName) st.pcName = pc
+                runOnUiThread { showTargets(devs) }
+            } catch (e: Exception) { runOnUiThread { toast(e.message ?: "Falhou") } }
+        }.start()
+    }
+
+    private fun showTargets(devs: List<Device>) {
+        if (devs.isEmpty()) {
+            if (st.target.isNotEmpty()) { st.target = ""; st.targetName = ""; updateStatus() }   // o aparelho escolhido sumiu: volta pro PC
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Mandar para")
+                .setMessage("Por enquanto só o PC (${st.pcName}).\n\nPra mandar pra um tablet ou outro celular, instale esta versão do Fly nele, pareie com o mesmo PC e abra o app uma vez. Aí ele aparece aqui.")
+                .setPositiveButton("Ok", null).show()
+            return
+        }
+        val labels = listOf("💻  ${st.pcName}  (PC)") + devs.map { "📱  ${it.name}  · ${if (it.online) "conectado" else "fora de alcance"}" }
+        val ids = listOf("") + devs.map { it.id }
+        val cur = ids.indexOf(st.target).coerceAtLeast(0)
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Mandar para")
+            .setSingleChoiceItems(labels.toTypedArray(), cur) { d, i ->
+                st.target = ids[i]; st.targetName = if (i == 0) "" else devs[i - 1].name
+                sendErr = null; updateStatus(); d.dismiss()
+                toast(if (i == 0) "Agora vai pro PC" else "Agora vai pro ${st.targetName}, passando pelo PC" + if (!devs[i - 1].online) ". Ele está fora de alcance: recebe quando conectar." else "")
+            }
+            .setNegativeButton("Fechar", null)
+            .show()
     }
 
     /** Lê a galeria de novo sem reiniciar o app: mantém a foto selecionada, a conexão e as miniaturas já carregadas. */
@@ -643,6 +703,40 @@ class MainActivity : AppCompatActivity() {
     private fun bg() = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF1C1A14.toInt(), 0xFF08080A.toInt(), 0xFF08080A.toInt()))
     private fun logo(): View = ImageView(this).apply { setImageResource(R.drawable.ic_launcher); scaleType = ImageView.ScaleType.FIT_CENTER }
     private fun mt(top: Int) = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(top) }
+
+    /** Cartão de uma configuração: ícone dourado + nome grande + o que ela faz. O conteúdo vai embaixo. */
+    private fun card(icon: String, title: String, desc: String) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(16))
+        background = GradientDrawable().apply { setColor(0x14FFFFFF); setStroke(dp(1), 0x2ED4AF37); cornerRadius = dp(20).toFloat() }
+        val head = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(TextView(this@MainActivity).apply {
+            text = icon; textSize = 18f; gravity = Gravity.CENTER; setTextColor(0xFF1A1405.toInt())
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFFB8860B.toInt(), 0xFFFFE9A0.toInt())).apply { cornerRadius = dp(12).toFloat() }
+        }, LinearLayout.LayoutParams(dp(38), dp(38)))
+        head.addView(text(title, 19f, Color.WHITE, true, Gravity.START), LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(12) })
+        addView(head)
+        addView(text(desc, 14.5f, 0xFFC9C1AC.toInt(), false, Gravity.START).apply { setLineSpacing(0f, 1.15f) }, mt(10))
+    }
+
+    /** Opção grande com nome, explicação e barrinhas de força. A escolhida fica dourada. */
+    private fun option(title: String, desc: String, bars: Int, on: Boolean, onClick: () -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(14), dp(14), dp(14))
+        background = if (on) GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xFFB8860B.toInt(), 0xFFD4AF37.toInt())).apply { cornerRadius = dp(16).toFloat() }
+        else GradientDrawable().apply { setColor(0x22FFFFFF); cornerRadius = dp(16).toFloat() }
+        val fg = if (on) 0xFF1A1405.toInt() else Color.WHITE
+        val sub = if (on) 0xCC1A1405.toInt() else 0xFFA39B86.toInt()
+        // barrinhas de força (1 a 3)
+        val meter = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM }
+        for (i in 1..3) meter.addView(View(this@MainActivity).apply {
+            background = GradientDrawable().apply { setColor(if (i <= bars) fg else (if (on) 0x441A1405 else 0x33FFFFFF)); cornerRadius = dp(2).toFloat() }
+        }, LinearLayout.LayoutParams(dp(6), dp(8 + i * 7)).apply { marginEnd = dp(3) })
+        addView(meter, LinearLayout.LayoutParams(dp(30), dp(30)))
+        val txt = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+        txt.addView(text(title + if (on) "  ✓" else "", 17f, fg, true, Gravity.START))
+        txt.addView(text(desc, 13.5f, sub, false, Gravity.START), mt(2))
+        addView(txt, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(10) })
+        isClickable = true; setOnClickListener { onClick() }
+    }
     private fun text(s: String, size: Float, color: Int, bold: Boolean, g: Int = Gravity.CENTER) = TextView(this).apply {
         text = s; textSize = size; setTextColor(color); gravity = g; if (bold) setTypeface(typeface, Typeface.BOLD)
     }

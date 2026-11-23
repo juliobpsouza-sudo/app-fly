@@ -7,7 +7,8 @@ import org.json.JSONObject
 import java.util.concurrent.CopyOnWriteArrayList
 
 /** Algo que o PC mandou pro celular e que espera você tocar em "Permitir". */
-data class InItem(val seq: Long, val id: String, val kind: String, val name: String, val size: Long, val text: String?, val url: String?, val update: Boolean = false)
+data class InItem(val seq: Long, val id: String, val kind: String, val name: String, val size: Long, val text: String?, val url: String?, val update: Boolean = false,
+                  val from: String? = null)   // null = o próprio PC; senão, o nome do aparelho que mandou pela ponte
 
 /** Lista (guardada no celular) do que o PC mandou e ainda não foi aceito nem recusado. */
 object Inbox {
@@ -27,13 +28,14 @@ object Inbox {
         val arr = try { JSONArray(p?.getString("items", "[]") ?: "[]") } catch (_: Exception) { JSONArray() }
         return (0 until arr.length()).map { arr.getJSONObject(it).let { o ->
             InItem(o.getLong("seq"), o.getString("id"), o.getString("kind"), o.getString("name"), o.optLong("size"),
-                if (o.isNull("text")) null else o.getString("text"), if (o.isNull("url")) null else o.getString("url"), o.optBoolean("update", false))
+                if (o.isNull("text")) null else o.getString("text"), if (o.isNull("url")) null else o.getString("url"), o.optBoolean("update", false),
+                o.optString("from", "").takeIf { it.isNotBlank() })
         } }
     }
 
     @Synchronized private fun save(list: List<InItem>) {
         val arr = JSONArray()
-        list.forEach { i -> arr.put(JSONObject().put("seq", i.seq).put("id", i.id).put("kind", i.kind).put("name", i.name).put("size", i.size).put("text", i.text ?: JSONObject.NULL).put("url", i.url ?: JSONObject.NULL).put("update", i.update)) }
+        list.forEach { i -> arr.put(JSONObject().put("seq", i.seq).put("id", i.id).put("kind", i.kind).put("name", i.name).put("size", i.size).put("text", i.text ?: JSONObject.NULL).put("url", i.url ?: JSONObject.NULL).put("update", i.update).put("from", i.from ?: "")) }
         p?.edit()?.putString("items", arr.toString())?.apply()
         listeners.forEach { it() }
     }

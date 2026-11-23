@@ -45,10 +45,15 @@ button{font:inherit;font-weight:600;border:0;border-radius:8px;padding:6px 12px;
 #no{background:transparent;color:#c9c9d2;border:1px solid #5a5b6a}
 #no:hover{background:#2a2b35}
 #fb{margin-top:8px;font-size:11px;color:var(--mut);display:none}
+#pd{display:flex;gap:6px;flex-wrap:nowrap;overflow:hidden;margin:-2px 0 8px}
+#pd:empty{display:none}
+#pd button{font-weight:500;font-size:11px;padding:3px 9px;border-radius:99px;background:#2a2b35;color:#c9c9d2;border:1px solid #3a3b48;white-space:nowrap;max-width:118px;overflow:hidden;text-overflow:ellipsis}
+#pd button.on{background:rgba(232,195,106,.18);color:var(--gold);border-color:rgba(232,195,106,.7)}
 </style></head>
 <body>
 <div id="root">
   <div id="pop"><div id="pn"></div><div id="ps"></div><div id="pq">Enviar pro celular?</div>
+    <div id="pd"></div>
     <div class="btns" id="btns"><button id="yes">Sim, enviar</button><button id="no">Não</button></div><div id="fb"></div></div>
   <div id="zone">
     <div id="gate"><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
@@ -94,11 +99,25 @@ window.addEventListener('drop', e => {
   }
   pending = spec;
   $('pn').textContent = name; $('ps').textContent = sub;
-  $('pq').textContent = 'Enviar pro celular?'; $('btns').style.display = 'flex'; $('fb').style.display = 'none';
+  askWho(); $('btns').style.display = 'flex'; $('fb').style.display = 'none';
   B.classList.add('flash'); setTimeout(() => B.classList.remove('flash'), 350);
   setState('pop');
   clearTimeout(popT); popT = setTimeout(back, timeoutS * 1000);   // sem resposta no tempo configurado (padrão 15 s): conta como Não
 });
+// pra qual aparelho vai: o escolhido (aqui ou na aba "Enviar pro celular"). Com mais de um, aparecem os botões pra trocar.
+let out = { devices: [], target: '', targetName: '' };
+zarpa.outList().then(d => { out = d; }).catch(() => {});
+zarpa.onOutUpdate(d => { out = d; if (state === 'pop' && pending) askWho(); });
+function askWho() {
+  $('pq').textContent = out.targetName ? `Enviar pro ${out.targetName}?` : 'Enviar pro celular?';
+  const box = $('pd'); box.textContent = '';
+  if ((out.devices || []).length < 2) return;
+  for (const d of out.devices) {
+    const b = document.createElement('button'); b.textContent = d.name; b.className = d.id === out.target ? 'on' : '';
+    b.onclick = async () => { out = await zarpa.outTarget(d.id); askWho(); clearTimeout(popT); popT = setTimeout(back, timeoutS * 1000); };
+    box.appendChild(b);
+  }
+}
 // tempo pra responder, vindo da aba Configurações
 let timeoutS = 15;
 zarpa.cfgGet().then(c => { if (c && c.timeout) timeoutS = c.timeout; }).catch(() => {});
@@ -107,25 +126,25 @@ zarpa.onCfg(c => { if (c && c.timeout) timeoutS = c.timeout; });
 function demoPop() {
   pending = null;
   $('pn').textContent = 'relatorio.pdf'; $('ps').textContent = '2,4 MB';
-  $('pq').textContent = 'Enviar pro celular? (teste)'; $('btns').style.display = 'flex'; $('fb').style.display = 'none';
+  askWho(); $('pq').textContent += ' (teste)'; $('btns').style.display = 'flex'; $('fb').style.display = 'none';
   B.classList.add('flash'); setTimeout(() => B.classList.remove('flash'), 350);
   setState('pop'); clearTimeout(popT); popT = setTimeout(back, timeoutS * 1000);
 }
 function fail(msg) {
-  $('pn').textContent = 'Não deu'; $('ps').textContent = ''; $('pq').textContent = msg; $('btns').style.display = 'none'; $('fb').style.display = 'none';
+  $('pn').textContent = 'Não deu'; $('ps').textContent = ''; $('pq').textContent = msg; $('btns').style.display = 'none'; $('fb').style.display = 'none'; $('pd').textContent = '';
   setState('pop'); clearTimeout(popT); popT = setTimeout(back, 4500);
 }
 $('no').onclick = back;
 $('yes').onclick = async () => {
   if (!pending) return back();
   const spec = pending; pending = null; clearTimeout(popT);
-  $('btns').style.display = 'none'; $('pq').textContent = 'Enviando…';
+  $('btns').style.display = 'none'; $('pd').textContent = ''; $('pq').textContent = 'Enviando…';
   const r = await zarpa.outAdd(spec);
   if (r.errors && r.errors.length) { $('pq').textContent = r.errors[0]; }
   else {
-    const o = await zarpa.outList();
-    $('pq').textContent = 'Enviado';
-    $('fb').textContent = o.online ? 'O celular vai avisar.' : 'Celular fora de alcance. Fica na fila até ele conectar.';
+    const o = await zarpa.outList(), who = r.toName || 'O celular';
+    $('pq').textContent = r.toName ? `Enviado pro ${r.toName}` : 'Enviado';
+    $('fb').textContent = o.online ? `${who} vai avisar.` : `${who} está fora de alcance. Fica na fila até conectar.`;
     $('fb').style.display = 'block';
   }
   popT = setTimeout(back, 2600);

@@ -69,9 +69,32 @@ function authed(req) {
   const h = req.headers.authorization || '';
   const a = Buffer.from(h.startsWith('Bearer ') ? h.slice(7) : ''), b = Buffer.from(cfg.token);
   const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
-  if (ok) touch(); else noteBad(req.socket.remoteAddress);
+  if (ok) { touch(); noteDevice(req); } else noteBad(req.socket.remoteAddress);
   return ok;
 }
+// ---------- aparelhos (cada celular/tablet pareado se apresenta com um id e um nome) ----------
+const devSeen = new Map();   // id -> último contato (ms), só na memória
+const devOf = req => { const d = String(req.headers['x-zarpa-device'] || ''); return /^[A-Za-z0-9]{8,40}$/.test(d) ? d : ''; };
+function noteDevice(req) {
+  const id = devOf(req); if (!id) return '';
+  let name = ''; try { name = decodeURIComponent(String(req.headers['x-zarpa-name'] || '')); } catch {}
+  name = name.replace(/[\x00-\x1f<>]/g, '').trim().slice(0, 40) || 'Celular';
+  const v = String(req.headers['x-zarpa-app'] || '').replace(/[^0-9.]/g, '').slice(0, 20);
+  cfg.devices = cfg.devices || {};
+  const d = cfg.devices[id];
+  devSeen.set(id, Date.now());
+  if (!d || d.name !== name || (v && d.ver !== v)) { cfg.devices[id] = { name, ver: v || (d && d.ver) || '', added: (d && d.added) || Date.now() }; saveCfg(); }
+  return id;
+}
+// "Online" = a conexão de fundo do aparelho (a que recebe do PC) está ativa agora ou respondeu há menos de 30 s.
+// Antes contava qualquer contato (até um "olá"), e o PC dizia "conectado" com a conexão de fundo ainda caída.
+const devPoll = new Map();   // id -> último long-poll (ms)
+const devOnline = id => [...waiters].some(w => w.dev === id) || Date.now() - (devPoll.get(id) || 0) < 30000;
+const flog = s => { try { fs.appendFileSync(path.join(app.getPath('userData'), 'zarpa.log'), s + '\n'); } catch {} };
+const devList = (except = '') => Object.entries(cfg.devices || {}).filter(([id]) => id !== except)
+  .map(([id, d]) => ({ id, name: d.name, ver: d.ver || '', online: devOnline(id) }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+const devName = id => ((cfg.devices || {})[id] || {}).name || '';
 // Celular acabou de parear: fecha a janela do QR e abre a galeria.
 function onPaired() {
   pairNonce = null; pairCode = null;
@@ -133,9 +156,21 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Lista de aparelhos pra onde dá pra mandar (o PC e os outros celulares/tablets pareados). Quem pergunta não entra.
+  if (req.method === 'GET' && u.pathname === '/devices') {
+    if (!authed(req)) return json(res, 401, { error: 'Celular não pareado' });
+    return json(res, 200, { pc: os.hostname(), devices: devList(devOf(req)).map(({ id, name, online }) => ({ id, name, online })) });
+  }
+
   if (req.method === 'POST' && u.pathname === '/upload') {
     if (!authed(req)) return json(res, 401, { error: 'Celular não pareado' });
     const kind = u.searchParams.get('kind') || 'file';
+    // Ponte: o destino é outro aparelho. O PC não mostra nada na tela, só guarda e passa adiante.
+    const to = u.searchParams.get('to') || '';
+    if (to) {
+      if (!(cfg.devices || {})[to] || to === devOf(req)) return json(res, 404, { error: 'Esse aparelho não está pareado com o PC' });
+      return relayIn(req, res, u, kind, to, devName(devOf(req)) || 'Celular');
+    }
     if (kind === 'link') {
       return readSmall(req, 4096, body => {
         let url; try { url = new URL(body.trim()); } catch { return json(res, 400, { error: 'Link inválido' }); }
@@ -149,18 +184,27 @@ const server = http.createServer((req, res) => {
     }
     const id = (u.searchParams.get('id') || '').slice(0, 64);
     const total = parseInt(req.headers['x-zarpa-size'] || '0', 10) || 0;
-    if (total > MAX_FILE) return json(res, 413, { error: 'Arquivo grande demais (limite de 2 GB)' });
-    if (total + MIN_FREE > freeBytes()) return json(res, 507, { error: 'Sem espaço livre no PC' });
-    const dest = uniquePath(u.searchParams.get('name'));
-    const t0 = Date.now(); let got = 0, lastP = 0;
+    const nm = u.searchParams.get('name') || 'arquivo';
+    if (total > MAX_FILE) { flog(`   RECUSADO ${nm}: grande demais (${total} bytes)`); return json(res, 413, { error: 'Arquivo grande demais (limite de 2 GB)' }); }
+    if (total + MIN_FREE > freeBytes()) { flog(`   RECUSADO ${nm}: sem espaço livre no PC`); return json(res, 507, { error: 'Sem espaço livre no PC' }); }
+    const dest = uniquePath(nm);
+    const t0 = Date.now(); let got = 0, lastP = 0, lastData = Date.now();
+    // Se os dados pararem de chegar por 30 s, desiste e registra (antes ficava pendurado sem deixar rastro no log).
+    const stall = setInterval(() => { if (Date.now() - lastData > 30000) req.destroy(new Error('os dados pararam de chegar por 30 s')); }, 5000);
     req.on('data', c => {
-      got += c.length;
+      got += c.length; lastData = Date.now();
       if (got > MAX_FILE) return req.destroy(new Error('arquivo acima do limite'));
       const now = Date.now();
       if (id && total > 0 && now - lastP > 150 && overlay && !overlay.isDestroyed()) { lastP = now; overlay.webContents.send('progress', { id, pct: Math.min(99, Math.floor(got * 100 / total)) }); }
     });
     return pipeline(req, fs.createWriteStream(dest), err => {
-      if (err) { fs.rm(dest, () => {}); return json(res, 500, { error: 'Falha ao gravar' }); }
+      clearInterval(stall);
+      if (err) {
+        fs.rm(dest, () => {});
+        flog(`   ERRO upload ${nm}: ${err.code || err.message} (${err.message}) — chegaram ${got} de ${total || '?'} bytes em ${Date.now() - t0} ms`);
+        try { json(res, 500, { error: 'Falha ao gravar' }); } catch {}
+        return;
+      }
       json(res, 200, { ok: true, saved: path.basename(dest) });
       const ms = Date.now() - t0;
       try { fs.appendFileSync(path.join(app.getPath('userData'), 'zarpa.log'), `   upload ${path.basename(dest)} ${got} bytes em ${ms} ms (${(got / 1048576 / Math.max(ms / 1000, 0.001)).toFixed(2)} MB/s)\n`); } catch {}
@@ -176,17 +220,19 @@ const server = http.createServer((req, res) => {
     if (!authed(req)) return json(res, 401, { error: 'Celular não pareado' });
     const after = parseInt(u.searchParams.get('after') || '0', 10) || 0;
     notePhoneVersion(req);
-    const ready = readyFor(after);
+    const dev = devOf(req);
+    if (dev) devPoll.set(dev, Date.now());
+    const ready = readyFor(after, dev);
     if (ready.length) { lastPoll = Date.now(); return json(res, 200, { items: handOut(ready) }); }
-    const w = { res, after };
-    w.timer = setTimeout(() => { waiters.delete(w); lastPoll = Date.now(); outNotify(); json(res, 200, { items: [] }); }, 25000);
+    const w = { res, after, dev };
+    w.timer = setTimeout(() => { waiters.delete(w); lastPoll = Date.now(); if (dev) devPoll.set(dev, Date.now()); outNotify(); json(res, 200, { items: [] }); }, 25000);
     waiters.add(w); lastPoll = Date.now(); outNotify();
     req.on('close', () => { clearTimeout(w.timer); if (waiters.delete(w)) outNotify(); });
     return;
   }
   if (req.method === 'GET' && u.pathname === '/inbox/file') {
     if (!authed(req)) return json(res, 401, { error: 'Celular não pareado' });
-    const it = outbox.find(i => i.id === u.searchParams.get('id') && i.kind === 'file');
+    const it = outbox.find(i => i.id === u.searchParams.get('id') && i.kind === 'file' && forDev(i, devOf(req)));
     let st; try { st = it && fs.statSync(it.path); } catch {}
     if (!it || !st || !st.isFile()) return json(res, 404, { error: 'O arquivo não está mais no PC' });
     res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': st.size });
@@ -194,14 +240,15 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'POST' && u.pathname === '/inbox/ack') {
     if (!authed(req)) return json(res, 401, { error: 'Celular não pareado' });
-    const it = outbox.find(i => i.id === u.searchParams.get('id'));
-    if (it) { it.state = u.searchParams.get('status') === 'received' ? 'delivered' : 'declined'; it.at = Date.now(); saveOutbox(); outNotify(); }
+    const it = outbox.find(i => i.id === u.searchParams.get('id') && forDev(i, devOf(req)));
+    if (it) { it.state = u.searchParams.get('status') === 'received' ? 'delivered' : 'declined'; it.at = Date.now(); dropRelay(it); saveOutbox(); outNotify(); }
     return json(res, 200, { ok: true });
   }
 
   // Prévia leve (miniatura) que chega antes do arquivo original e faz o pouso imediato.
   if (req.method === 'POST' && u.pathname === '/preview') {
     if (!authed(req)) return json(res, 401, { error: 'Celular não pareado' });
+    if (u.searchParams.get('to')) { req.resume(); return json(res, 200, { ok: true }); }   // indo pra outro aparelho: nada aparece na tela do PC
     const id = (u.searchParams.get('id') || '').slice(0, 64);
     const chunks = []; let n = 0;
     req.on('data', c => { n += c.length; if (n > 4 * 1024 * 1024) req.destroy(); else chunks.push(c); });
@@ -400,62 +447,125 @@ const waiters = new Set();
 const outFile = () => path.join(app.getPath('userData'), 'outbox.json');
 function loadOutbox() {
   try { const j = JSON.parse(fs.readFileSync(outFile(), 'utf8').replace(/^﻿/, '')); outbox = j.items || []; outSeq = j.seq || 0; } catch {}
-  const cut = Date.now() - 7 * 864e5; outbox = outbox.filter(i => i.created > cut);   // some o que ficou mais de 7 dias sem ser entregue
+  const cut = Date.now() - 7 * 864e5;
+  outbox.filter(i => i.created <= cut).forEach(dropRelay);
+  outbox = outbox.filter(i => i.created > cut);   // some o que ficou mais de 7 dias sem ser entregue
+  // arquivos da ponte que sobraram (Fly fechado no meio, item já removido): apaga
+  try {
+    const keep = new Set(outbox.filter(i => i.relay && i.path).map(i => path.resolve(i.path)));
+    for (const f of fs.readdirSync(relayDir())) { const p = path.resolve(relayDir(), f); if (!keep.has(p)) fs.rmSync(p, { force: true }); }
+  } catch {}
 }
 function saveOutbox() { try { fs.writeFileSync(outFile(), JSON.stringify({ seq: outSeq, items: outbox })); } catch {} }
-const pubItem = i => ({ seq: i.seq, id: i.id, kind: i.kind, name: i.name, size: i.size || 0, text: i.text || null, url: i.url || null, update: !!i.update });
+const pubItem = i => ({ seq: i.seq, id: i.id, kind: i.kind, name: i.name, size: i.size || 0, text: i.text || null, url: i.url || null, update: !!i.update, from: i.from || null });
+// ---------- ponte (celular → PC → outro aparelho) ----------
+const relayDir = () => path.join(app.getPath('userData'), 'relay');
+function dropRelay(i) { if (i && i.relay && i.path) { fs.rm(i.path, { force: true }, () => {}); i.path = null; } }
+function relayIn(req, res, u, kind, to, from) {
+  const done = item => {
+    outbox.push(Object.assign({ seq: ++outSeq, id: newId(), created: Date.now(), state: 'pending', to, from }, item));
+    saveOutbox(); flushWaiters(); outNotify();
+    json(res, 200, { ok: true, dest: to, online: devOnline(to) });
+  };
+  if (kind === 'link') {
+    return readSmall(req, 4096, body => {
+      let url; try { url = new URL(body.trim()); } catch { return json(res, 400, { error: 'Link inválido' }); }
+      if (!/^https?:$/.test(url.protocol)) return json(res, 400, { error: 'Só links http/https' });
+      done({ kind: 'link', url: url.href, text: null, name: url.hostname });
+    });
+  }
+  const total = parseInt(req.headers['x-zarpa-size'] || '0', 10) || 0;
+  if (total > MAX_FILE) return json(res, 413, { error: 'Arquivo grande demais (limite de 2 GB)' });
+  if (total + MIN_FREE > freeBytes()) return json(res, 507, { error: 'Sem espaço livre no PC' });
+  const name = (path.basename(u.searchParams.get('name') || 'arquivo').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'arquivo').slice(0, 150);
+  try { fs.mkdirSync(relayDir(), { recursive: true }); } catch {}
+  const dest = path.join(relayDir(), newId() + '-' + name);
+  let got = 0;
+  req.on('data', c => { got += c.length; if (got > MAX_FILE) req.destroy(new Error('arquivo acima do limite')); });
+  pipeline(req, fs.createWriteStream(dest), err => {
+    if (err) { fs.rm(dest, () => {}); return json(res, 500, { error: 'Falha ao gravar' }); }
+    try { fs.appendFileSync(path.join(app.getPath('userData'), 'zarpa.log'), `   ponte ${name} ${got} bytes: ${from} -> ${devName(to)}\n`); } catch {}
+    done({ kind: 'file', name, path: dest, size: got, relay: true });
+  });
+}
+// pra quem vai o que sai do PC: o aparelho escolhido na aba ou no portal; se nunca escolheu, o último que conectou
+function curTarget() {
+  const devs = cfg.devices || {};
+  if (cfg.outTo && devs[cfg.outTo]) return cfg.outTo;
+  return Object.keys(devs).sort((a, b) => (devSeen.get(b) || devs[b].added || 0) - (devSeen.get(a) || devs[a].added || 0))[0] || '';
+}
 function outList() {
+  const target = curTarget();
   return {
-    online: waiters.size > 0 || Date.now() - lastPoll < 40000,
+    online: target ? devOnline(target) : (waiters.size > 0 || Date.now() - lastPoll < 40000),
+    target, targetName: devName(target), devices: devList(),
     items: outbox.slice().reverse().map(i => ({ id: i.id, kind: i.kind, name: i.name, size: i.size || 0, state: i.state, created: i.created, at: i.at || 0, update: !!i.update,
+      toName: i.to ? devName(i.to) || 'aparelho removido' : '', from: i.from || '',
       preview: i.kind === 'text' ? String(i.text).slice(0, 90) : (i.url || null) }))
   };
 }
 // O celular guarda "o último número que vi" (after). Se esse número ficar maior que o do PC (fila recriada, PC reinstalado...),
 // o PC passava a achar que não havia nada novo e o item nunca chegava. Por isso, o que ainda não foi entregue sai SEMPRE,
 // independente do número do celular; o celular ignora o que já tem (confere pelo id).
-const readyFor = after => outbox.filter(i => i.state === 'pending' && (i.seq > after || !i.sent));
+// Item com destinatário só sai pra aquele aparelho; item sem destinatário (versões antigas) sai pra quem perguntar.
+const forDev = (i, dev) => !i.to || i.to === dev;
+const readyFor = (after, dev) => outbox.filter(i => i.state === 'pending' && forDev(i, dev) && (i.seq > after || !i.sent));
 function handOut(items) { items.forEach(i => { i.sent = true; }); saveOutbox(); return items.map(pubItem); }
-function outNotify() { if (gallery && !gallery.isDestroyed()) gallery.webContents.send('out-update', outList()); }
+function outNotify() {
+  const d = outList();
+  for (const w of [gallery, portal]) if (w && !w.isDestroyed()) w.webContents.send('out-update', d);
+}
 function flushWaiters() {
   for (const w of [...waiters]) {
-    const ready = readyFor(w.after);
+    const ready = readyFor(w.after, w.dev);
     if (!ready.length) continue;
     clearTimeout(w.timer); waiters.delete(w);
     json(w.res, 200, { items: handOut(ready) });
   }
 }
 const newId = () => crypto.randomBytes(8).toString('hex');
-function outAddFile(p) {
+function outAddFile(p, to) {
   let st; try { st = fs.statSync(p); } catch { return 'não consegui ler'; }
   if (!st.isFile()) return 'pastas não são suportadas (compacte em .zip)';
   if (st.size > MAX_FILE) return 'passa de 2 GB';
-  outbox.push({ seq: ++outSeq, id: newId(), kind: 'file', name: path.basename(p), path: p, size: st.size, created: Date.now(), state: 'pending' });
+  outbox.push({ seq: ++outSeq, id: newId(), kind: 'file', name: path.basename(p), path: p, size: st.size, created: Date.now(), state: 'pending', to: to || null });
   return null;
 }
-function outAddText(t) {
+function outAddText(t, to) {
   t = String(t || '').trim();
   if (!t) return null;
   if (t.length > 100000) return 'texto grande demais';
   let kind = 'text', url = null;
   try { const u = new URL(t); if (/^https?:$/.test(u.protocol) && !/\s/.test(t)) { kind = 'link'; url = u.href; } } catch {}
   outbox.push({ seq: ++outSeq, id: newId(), kind, url, text: kind === 'text' ? t : null,
-    name: kind === 'link' ? new URL(url).hostname : t.slice(0, 40).replace(/\s+/g, ' '), created: Date.now(), state: 'pending' });
+    name: kind === 'link' ? new URL(url).hostname : t.slice(0, 40).replace(/\s+/g, ' '), created: Date.now(), state: 'pending', to: to || null });
   return null;
 }
 ipcMain.handle('out-list', () => outList());
 ipcMain.handle('out-add', (_e, spec) => {
-  const errors = [];
-  for (const p of (spec && spec.paths) || []) { const e = outAddFile(String(p)); if (e) errors.push(path.basename(String(p)) + ': ' + e); }
-  for (const t of (spec && spec.texts) || []) { const e = outAddText(t); if (e) errors.push(e); }
+  const errors = [], to = curTarget();
+  for (const p of (spec && spec.paths) || []) { const e = outAddFile(String(p), to); if (e) errors.push(path.basename(String(p)) + ': ' + e); }
+  for (const t of (spec && spec.texts) || []) { const e = outAddText(t, to); if (e) errors.push(e); }
   saveOutbox(); flushWaiters(); outNotify();
-  return { errors };
+  return { errors, toName: devName(to) };
+});
+// escolhe o aparelho que recebe o que sai do PC (vale pra aba e pro portal)
+ipcMain.handle('out-target', (_e, id) => {
+  if ((cfg.devices || {})[id]) { cfg.outTo = id; saveCfg(); }
+  outNotify();
+  return outList();
+});
+// tira um aparelho da lista (ele volta sozinho se conectar de novo; pra bloquear de vez, use "Desparear todos")
+ipcMain.handle('dev-forget', (_e, id) => {
+  if (cfg.devices && cfg.devices[id]) { delete cfg.devices[id]; if (cfg.outTo === id) cfg.outTo = ''; saveCfg(); }
+  outNotify();
+  return outList();
 });
 ipcMain.handle('out-pick', async () => {
   const r = await dialog.showOpenDialog(gallery, { properties: ['openFile', 'multiSelections'] });
   return r.canceled ? [] : r.filePaths;
 });
-ipcMain.on('out-remove', (_e, id) => { outbox = outbox.filter(i => i.id !== id); saveOutbox(); outNotify(); });
+ipcMain.on('out-remove', (_e, id) => { dropRelay(outbox.find(i => i.id === id)); outbox = outbox.filter(i => i.id !== id); saveOutbox(); outNotify(); });
 
 // ---------- baixar o app do celular (QR do APK) ----------
 const apkPath = () => app.isPackaged ? path.join(process.resourcesPath, 'Zarpa.apk') : path.join(__dirname, '..', 'Zarpa.apk');
@@ -493,15 +603,21 @@ function notePhoneVersion(req) {
 ipcMain.handle('upd-info', () => {
   let size = 0; try { size = fs.statSync(apkPath()).size; } catch {}
   const apk = apkVersion(), phone = cfg.phoneVersion || '';
-  return { ok: size > 0, size, apkVersion: apk, phoneVersion: phone, newer: !!(apk && phone && verCmp(apk, phone) > 0), unknown: !phone };
+  // cada aparelho com a sua versão (quem ainda não se apresentou com nome aparece só na versão geral)
+  const devices = devList().map(d => ({ name: d.name, ver: d.ver, newer: !!(apk && d.ver && verCmp(apk, d.ver) > 0) }));
+  const newer = devices.length ? devices.some(d => d.newer) : !!(apk && phone && verCmp(apk, phone) > 0);
+  return { ok: size > 0, size, apkVersion: apk, phoneVersion: phone, devices, newer, unknown: !phone && !devices.some(d => d.ver) };
 });
 ipcMain.handle('upd-send', () => {
   let st; try { st = fs.statSync(apkPath()); } catch { return { error: 'O APK não está neste PC' }; }
   const v = apkVersion() || 'novo';
-  outbox = outbox.filter(i => !(i.update && i.state === 'pending'));      // só uma atualização esperando por vez
-  outbox.push({ seq: ++outSeq, id: newId(), kind: 'file', name: `Fly-${v}.apk`, path: apkPath(), size: st.size, update: true, created: Date.now(), state: 'pending' });
+  outbox = outbox.filter(i => !(i.update && i.state === 'pending'));      // só uma atualização esperando por vez (por aparelho)
+  // vai pra todos os aparelhos pareados; sem nenhum conhecido, sai pra quem perguntar primeiro (como antes)
+  const targets = Object.keys(cfg.devices || {});
+  for (const to of targets.length ? targets : [null])
+    outbox.push({ seq: ++outSeq, id: newId(), kind: 'file', name: `Fly-${v}.apk`, path: apkPath(), size: st.size, update: true, created: Date.now(), state: 'pending', to });
   saveOutbox(); flushWaiters(); outNotify();
-  return { ok: true, version: v };
+  return { ok: true, version: v, count: targets.length };
 });
 
 // ---------- parear ----------
@@ -533,7 +649,7 @@ function buildMenu() {
       { label: 'Brilho na borda', type: 'radio', checked: cfg.effect === 'glow', click: () => { cfg.effect = 'glow'; saveCfg(); } },
       { label: 'Onda', type: 'radio', checked: cfg.effect === 'ripple', click: () => { cfg.effect = 'ripple'; saveCfg(); } } ] },
     { label: 'Portal no canto da tela', type: 'checkbox', checked: cfg.portal !== false, click: m => portalSet(m.checked) },
-    { label: 'Iniciar com o Windows', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: m => app.setLoginItemSettings({ openAtLogin: m.checked }) },
+    { label: 'Iniciar com o Windows', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: m => { app.setLoginItemSettings({ openAtLogin: m.checked }); cfg.autostart = m.checked; saveCfg(); } },
     { label: 'Desparear todos os celulares', click: () => { cfg.token = crypto.randomBytes(24).toString('hex'); saveCfg(); } },
     { type: 'separator' },
     { label: 'Sair', click: () => app.quit() }
@@ -566,6 +682,12 @@ app.whenReady().then(() => {
   if (!cfg.paired_once) {
     cfg.paired_once = true; saveCfg(); openApk();   // primeira vez: começa pelo QR do app do celular; de lá o botão leva ao QR de parear
     if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: true });   // app instalado: abre com o Windows (dá pra desligar no menu da bandeja)
+  }
+  // Abrir com o Windows: se não foi desligado no menu e a entrada sumiu ou ficou velha (ex.: apontando pro antigo
+  // Zarpa.exe, que não existe mais), registra de novo com o Fly.exe de agora.
+  if (app.isPackaged && cfg.autostart !== false && !app.getLoginItemSettings().openAtLogin) {
+    app.setLoginItemSettings({ openAtLogin: true });
+    flog(`   abrir com o Windows: registrado de novo (${process.execPath})`);
   }
 });
 app.on('window-all-closed', e => e.preventDefault());

@@ -36,14 +36,64 @@ class Store(ctx: Context) {
         get() = p.getString("nonce", "") ?: ""
         set(v) { p.edit().putString("nonce", v).apply() }
     val paired: Boolean get() = token.isNotEmpty() && hosts.isNotEmpty()
-    fun clear() { p.edit().clear().apply() }
+    /** Identidade deste aparelho pro PC (sobrevive ao "Sair": o PC continua reconhecendo o mesmo aparelho). */
+    val devId: String
+        get() = p.getString("devId", null) ?: java.util.UUID.randomUUID().toString().replace("-", "").take(20).also { p.edit().putString("devId", it).apply() }
+    var devName: String
+        get() = p.getString("devName", null) ?: defaultName
+        set(v) { p.edit().putString("devName", v.trim().take(40)).apply() }
+    private val defaultName: String = try {
+        android.provider.Settings.Global.getString(ctx.contentResolver, "device_name")?.takeIf { it.isNotBlank() }
+    } catch (_: Exception) { null } ?: android.os.Build.MODEL
+    /** Pra onde vai o que sai daqui: "" = o PC; senão, o id de outro aparelho pareado com o mesmo PC. */
+    var target: String
+        get() = p.getString("target", "") ?: ""
+        set(v) { p.edit().putString("target", v).apply() }
+    var targetName: String
+        get() = p.getString("targetName", "") ?: ""
+        set(v) { p.edit().putString("targetName", v).apply() }
+    /** Nome do destino atual, pra mostrar na tela. */
+    val destName: String get() = if (target.isEmpty()) pcName else targetName.ifEmpty { "aparelho" }
+    fun clear() {
+        val id = devId; val nm = p.getString("devName", null)
+        val e = p.edit().clear().putString("devId", id)
+        if (nm != null) e.putString("devName", nm)
+        e.apply()
+    }
 }
+
+/** O PC respondeu e recusou (sem espaço, não pareado, grande demais…): tentar de novo não adianta. */
+class PcRefused(msg: String) : Exception(msg)
+
+/** Outro aparelho pareado com o mesmo PC. */
+data class Device(val id: String, val name: String, val online: Boolean)
 
 object Net {
     /** Erros de todos os endereços tentados na última busca (um por linha). */
     @Volatile var appVersion: String = ""      // versão deste app; o PC mostra na aba Atualizações
     @Volatile var lastError: String = ""
     private fun addError(msg: String) { synchronized(this) { lastError = if (lastError.isEmpty()) msg else "$lastError\n$msg" } }
+
+    /** Chave do pareamento + quem é este aparelho (o PC usa pra saber pra quem entregar cada coisa). */
+    private fun auth(c: HttpURLConnection, st: Store) {
+        c.setRequestProperty("Authorization", "Bearer ${st.token}")
+        c.setRequestProperty("X-Zarpa-Device", st.devId)
+        c.setRequestProperty("X-Zarpa-Name", URLEncoder.encode(st.devName, "UTF-8").replace("+", "%20"))
+        if (appVersion.isNotEmpty()) c.setRequestProperty("X-Zarpa-App", appVersion)
+    }
+    private fun toq(st: Store) = if (st.target.isNotEmpty()) "&to=${URLEncoder.encode(st.target, "UTF-8")}" else ""
+
+    /** Outros aparelhos pareados com o mesmo PC (pra escolher pra onde mandar). */
+    fun devices(st: Store, host: String): Pair<String, List<Device>> {
+        val c = URL("http://$host:${st.port}/devices").openConnection() as HttpURLConnection
+        c.connectTimeout = 6000; c.readTimeout = 8000
+        auth(c, st)
+        if (c.responseCode == 404) throw Exception("O Fly do PC é antigo: atualize o PC pra mandar pra outros aparelhos")
+        check(c.responseCode)
+        val j = JSONObject(c.inputStream.bufferedReader().readText())
+        val arr = j.getJSONArray("devices")
+        return j.optString("pc", st.pcName) to (0 until arr.length()).map { arr.getJSONObject(it).let { o -> Device(o.getString("id"), o.getString("name"), o.optBoolean("online")) } }
+    }
 
     // O primeiro contato pelo Tailscale/rede móvel pode levar vários segundos (o túnel "acorda"), então o prazo é folgado.
     fun ping(host: String, port: Int, timeoutMs: Int = 7000): Boolean = try {
@@ -76,9 +126,8 @@ object Net {
         try {
             val c = URL("http://$host:${st.port}/hello").openConnection() as HttpURLConnection
             c.requestMethod = "POST"; c.doOutput = true; c.connectTimeout = 8000; c.readTimeout = 8000
-            c.setRequestProperty("Authorization", "Bearer ${st.token}")
+            auth(c, st)
             val k = st.pairNonce
-            if (appVersion.isNotEmpty()) c.setRequestProperty("X-Zarpa-App", appVersion)
             if (k.isNotEmpty()) c.setRequestProperty("X-Zarpa-Pair", k)   // prova pro PC que fui eu que li o QR
             c.outputStream.use { it.write(ByteArray(0)) }
             if (c.responseCode == 200 && k.isNotEmpty()) st.pairNonce = ""
@@ -89,7 +138,7 @@ object Net {
     fun sendPreview(st: Store, host: String, id: String, name: String, jpeg: ByteArray) {
         val c = URL("http://$host:${st.port}/preview?id=${URLEncoder.encode(id, "UTF-8")}&name=${URLEncoder.encode(name, "UTF-8")}").openConnection() as HttpURLConnection
         c.requestMethod = "POST"; c.doOutput = true; c.connectTimeout = 10000; c.readTimeout = 30000
-        c.setRequestProperty("Authorization", "Bearer ${st.token}")
+        auth(c, st)
         c.setFixedLengthStreamingMode(jpeg.size)
         c.outputStream.use { it.write(jpeg) }
         check(c.responseCode)
@@ -137,9 +186,12 @@ object Net {
 
     fun upload(ctx: Context, st: Store, host: String, uri: Uri, name: String, id: String? = null, size: Long = -1, onBytes: (Long) -> Unit) {
         val idq = if (id != null) "&id=${URLEncoder.encode(id, "UTF-8")}" else ""
-        val c = URL("http://$host:${st.port}/upload?kind=file&name=${URLEncoder.encode(name, "UTF-8")}$idq").openConnection() as HttpURLConnection
+        val dq = toq(st)
+        val c = URL("http://$host:${st.port}/upload?kind=file&name=${URLEncoder.encode(name, "UTF-8")}$idq$dq").openConnection() as HttpURLConnection
         c.requestMethod = "POST"; c.doOutput = true; c.connectTimeout = 10000; c.readTimeout = 180000
-        c.setRequestProperty("Authorization", "Bearer ${st.token}")
+        auth(c, st)
+        // conexão nova a cada envio: não reaproveita uma conexão antiga que pode ter morrido quando o PC desligou
+        c.setRequestProperty("Connection", "close")
         if (size > 0) c.setRequestProperty("X-Zarpa-Size", size.toString())
         c.setChunkedStreamingMode(256 * 1024)
         val input = ctx.contentResolver.openInputStream(uri) ?: throw Exception("Não consegui abrir o arquivo")
@@ -156,15 +208,15 @@ object Net {
     /** Pergunta ao PC "tem algo pra mim?". O PC segura a resposta até ~25 s ou até chegar algo (long-poll). */
     fun inboxWait(st: Store, host: String, after: Long): List<InItem> {
         val c = URL("http://$host:${st.port}/inbox/wait?after=$after").openConnection() as HttpURLConnection
-        c.connectTimeout = 10000; c.readTimeout = 45000
-        c.setRequestProperty("Authorization", "Bearer ${st.token}")
-        if (appVersion.isNotEmpty()) c.setRequestProperty("X-Zarpa-App", appVersion)
+        c.connectTimeout = 10000; c.readTimeout = 35000   // o PC responde em até 25 s; passou disso, a conexão morreu
+        auth(c, st)
         if (c.responseCode == 401) throw IllegalStateException("Este celular não está mais pareado")
         check(c.responseCode)
         val arr = org.json.JSONObject(c.inputStream.bufferedReader().readText()).getJSONArray("items")
         return (0 until arr.length()).map { arr.getJSONObject(it).let { o ->
             InItem(o.getLong("seq"), o.getString("id"), o.getString("kind"), o.optString("name", "arquivo"), o.optLong("size", 0),
-                if (o.isNull("text")) null else o.getString("text"), if (o.isNull("url")) null else o.getString("url"), o.optBoolean("update", false))
+                if (o.isNull("text")) null else o.getString("text"), if (o.isNull("url")) null else o.getString("url"), o.optBoolean("update", false),
+                if (o.isNull("from")) null else o.optString("from").takeIf { it.isNotBlank() })
         } }
     }
 
@@ -172,7 +224,7 @@ object Net {
         try {
             val c = URL("http://$host:${st.port}/inbox/ack?id=${URLEncoder.encode(id, "UTF-8")}&status=${if (received) "received" else "declined"}").openConnection() as HttpURLConnection
             c.requestMethod = "POST"; c.doOutput = true; c.connectTimeout = 8000; c.readTimeout = 8000
-            c.setRequestProperty("Authorization", "Bearer ${st.token}")
+            auth(c, st)
             c.outputStream.use { it.write(ByteArray(0)) }
             c.responseCode
         } catch (_: Exception) { }
@@ -182,7 +234,7 @@ object Net {
     fun download(ctx: Context, st: Store, host: String, item: InItem, onPct: (Int) -> Unit): Uri {
         val c = URL("http://$host:${st.port}/inbox/file?id=${URLEncoder.encode(item.id, "UTF-8")}").openConnection() as HttpURLConnection
         c.connectTimeout = 10000; c.readTimeout = 60000
-        c.setRequestProperty("Authorization", "Bearer ${st.token}")
+        auth(c, st)
         if (c.responseCode == 404) throw Exception("O arquivo não está mais no PC")
         check(c.responseCode)
         val total = c.contentLengthLong.takeIf { it > 0 } ?: item.size
@@ -214,14 +266,39 @@ object Net {
     }
 
     fun sendLink(st: Store, host: String, link: String) {
-        val c = URL("http://$host:${st.port}/upload?kind=link").openConnection() as HttpURLConnection
-        c.requestMethod = "POST"; c.doOutput = true; c.connectTimeout = 4000; c.readTimeout = 10000
-        c.setRequestProperty("Authorization", "Bearer ${st.token}")
+        val c = URL("http://$host:${st.port}/upload?kind=link${toq(st)}").openConnection() as HttpURLConnection
+        c.requestMethod = "POST"; c.doOutput = true; c.connectTimeout = 6000; c.readTimeout = 10000
+        auth(c, st)
+        c.setRequestProperty("Connection", "close")
         c.outputStream.use { it.write(link.toByteArray()) }
         check(c.responseCode)
     }
 
+    /**
+     * Faz o envio e, se der erro de rede, tenta de novo UMA vez só:
+     * espera 1,5 s, procura o PC de novo e repete. Se o PC recusou de verdade (PcRefused), não repete.
+     */
+    fun <T> withOneRetry(st: Store, host: String, block: (String) -> T): T {
+        return try { block(host) }
+        catch (e: PcRefused) { throw e }
+        catch (e: Exception) {
+            Thread.sleep(1500)
+            val h2 = findHost(st) ?: throw Exception("Perdi o PC no envio (tentei 2 vezes).\n$lastError")
+            onHostChanged?.invoke(h2)
+            block(h2)
+        }
+    }
+    /** Avisa quem guarda o endereço (a tela principal) que o PC respondeu em outro endereço. */
+    @Volatile var onHostChanged: ((String) -> Unit)? = null
+
     private fun check(code: Int) {
-        if (code != 200) throw Exception(when (code) { 401 -> "Este celular não está mais pareado"; else -> "O PC respondeu erro $code" })
+        // 500 = o PC não conseguiu gravar (ex.: os dados pararam no meio): vale tentar de novo
+        if (code >= 500 && code != 507) throw Exception("O PC não conseguiu receber (erro $code)")
+        if (code != 200) throw PcRefused(when (code) {
+            401 -> "Este celular não está mais pareado"
+            404 -> "O aparelho escolhido não está mais pareado com o PC (ou o Fly do PC é antigo). Escolha outro destino no topo."
+            413 -> "Arquivo grande demais (limite de 2 GB)"
+            507 -> "Sem espaço livre no PC"
+            else -> "O PC respondeu erro $code" })
     }
 }

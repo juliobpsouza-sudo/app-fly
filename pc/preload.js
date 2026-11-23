@@ -39,6 +39,8 @@ contextBridge.exposeInMainWorld('zarpa', {
   outAdd: spec => ipcRenderer.invoke('out-add', spec),
   outPick: () => ipcRenderer.invoke('out-pick'),
   outRemove: id => ipcRenderer.send('out-remove', id),
+  outTarget: id => ipcRenderer.invoke('out-target', id),
+  devForget: id => ipcRenderer.invoke('dev-forget', id),
   onOutUpdate: cb => ipcRenderer.on('out-update', (_e, d) => cb(d)),
   onLibAdd: cb => ipcRenderer.on('lib-add', (_e, d) => cb(d)),
   onLibThumb: cb => ipcRenderer.on('lib-thumb', (_e, d) => cb(d))
